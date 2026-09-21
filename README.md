@@ -101,6 +101,8 @@ The page is a PHP array. The root has the fields `title` / `layout` / `body` / `
 
 Keys on a node fall into three groups: DSL fields (consumed by the node), forwarded attributes (emitted on the tag: `"@event"`, names containing a colon like `x-on:click`, prefixes `x-` / `v-` / `hx-` / `data-`, and `class` / `id` / `style`), and everything else — a compile error, treated as a typo and never dropped silently.
 
+Structural children (`body`, `sections.<name>`, `then`, `else`, `each.body`, `el.body`, `column.content`) and `fields` / `columns` are **lists**; `sections`, `options` and `component.data` are **maps**. Writing a single node without its list wrapper is an array too, so it is rejected where it happens rather than failing later with a message about the wrong thing.
+
 The full node grammar, interpolation rules and error catalogue are specified in `spec.md`.
 
 ## Front-end Packages
@@ -238,6 +240,8 @@ echo $renderer->render($page, ['users' => [...]]);
 `{{ path }}` 把点路径插值为自动转义输出（`{{ user.name }}` → `## $user['name'] ?? '' ##`）。只支持 `a.b.c` 路径——函数调用、算术一律不允许。字面量字段——`layout`、section 名、`form.method`、`field.name`、`field.label`、`option` 的 value 与显示文本、`table.empty`、`column.label`、`component.name`——原样输出；在其中写 `{{ }}` 属编译错误。
 
 节点上的键分三类：DSL 字段（节点自己消费）、透传属性（输出到标签：`"@event"`、带冒号的名字如 `x-on:click`、前缀 `x-` / `v-` / `hx-` / `data-`、`class` / `id` / `style`）、其余一律编译错误——视为拼写错误，绝不静默丢弃。
+
+结构性字段（`body`、`sections.<名>`、`then`、`else`、`each.body`、`el.body`、`column.content`）与 `fields` / `columns` 是**列表**；`sections`、`options`、`component.data` 是**映射**。单个节点漏掉列表包裹时仍是数组，因此会在发生处被拦下，而不是留到更深处报一个指错对象的错误。
 
 完整节点文法、插值规则与错误清单见 `spec.md`。
 

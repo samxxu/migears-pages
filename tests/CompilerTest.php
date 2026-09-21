@@ -6,6 +6,7 @@ namespace MiGears\Pages\Tests;
 
 use MiGears\Pages\Compiler;
 use MiGears\Pages\Exception\CompileException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -329,6 +330,20 @@ final class CompilerTest extends TestCase
         }
     }
 
+    public function testFieldRequiredMustBeBooleanAndOptionTextMustBeString(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]],
+            'required 必须是布尔值，收到 string'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+                ['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]],
+            ]]]],
+            'option "a" 的文本必须是字符串，收到 array'
+        );
+    }
+
     public function testSelectRejectsValueBindingAndNonSelectRejectsOptions(): void
     {
         $this->expectError(
@@ -342,6 +357,29 @@ final class CompilerTest extends TestCase
                 ['name' => 's', 'label' => 'S', 'options' => ['x' => 'X']],
             ]]]],
             'options 仅用于 select 字段'
+        );
+    }
+
+    public function testPageRootFieldsAreTypeChecked(): void
+    {
+        $this->expectError(['body' => '不是数组'], 'body: 必须是节点树数组，收到 string');
+        $this->expectError(['body' => ['type' => 'text', 'text' => 'x']], 'body: 必须是节点树数组（列表）');
+        $this->expectError(['layout' => ['a'], 'sections' => []], 'page: layout 必须是字符串，收到 array');
+        $this->expectError(
+            ['title' => ['a'], 'layout' => 'layout/main', 'sections' => []],
+            'page: title 必须是字符串，收到 array'
+        );
+        $this->expectError(
+            ['layout' => 'layout/main', 'sections' => '不是映射'],
+            'page: sections 必须是 section 名到节点树的映射，收到 string'
+        );
+        $this->expectError(
+            ['layout' => 'layout/main', 'sections' => ['content' => '不是树']],
+            'sections.content: 必须是节点树数组，收到 string'
+        );
+        $this->expectError(
+            ['layout' => 'layout/main', 'sections' => ['content' => ['type' => 'text', 'text' => 'x']]],
+            'sections.content: 必须是节点树数组（列表）'
         );
     }
 
@@ -420,12 +458,45 @@ final class CompilerTest extends TestCase
         $this->expectError(['body' => [['text' => 'x']]], '节点缺少 type 字段');
     }
 
+    public function testStructuralChildrenMustBeNodeLists(): void
+    {
+        $this->expectError(['body' => [['type' => 'if', 'when' => 'a']]], 'if 缺少 then（节点树数组）');
+        $this->expectError(
+            ['body' => [['type' => 'if', 'when' => 'a', 'then' => ['type' => 'text', 'text' => 'x']]]],
+            'then: 必须是节点树数组（列表）'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => 'x']]],
+            'else: 必须是节点树数组，收到 string'
+        );
+        $this->expectError(['body' => [['type' => 'each', 'items' => 'u']]], 'each 缺少 body（节点树数组）');
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]],
+            'body: 必须是节点树数组（列表）'
+        );
+    }
+
+    public function testFieldAndColumnListsMustBeLists(): void
+    {
+        $this->expectError(['body' => [['type' => 'form', 'action' => '/s']]], 'form 缺少 fields（字段数组）');
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]],
+            'fields: 必须是字段数组（列表）'
+        );
+        $this->expectError(['body' => [['type' => 'table', 'items' => 'u']]], 'table 缺少 columns（列数组）');
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]],
+            'columns: 必须是列数组（列表）'
+        );
+    }
+
     public function testElRequiresTagAndBody(): void
     {
         $this->expectError(['body' => [['type' => 'el']]], '缺少 string 字段 "tag"');
         // an <el> may wrap nothing: it exists to carry attributes
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'div']]]));
-        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]], 'body 必须是节点树数组');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]], 'body: 必须是节点树数组，收到 string');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => ['type' => 'text', 'text' => 'x']]]], 'body: 必须是节点树数组（列表）');
         $this->expectError(['body' => [['type' => 'el', 'tag' => '1div', 'body' => []]]], '非法的 tag');
         // uppercase is normalised, not rejected
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'DIV', 'body' => []]]]));
@@ -451,6 +522,60 @@ final class CompilerTest extends TestCase
         $this->expectException(CompileException::class);
         $this->expectExceptionMessage('页面文件不存在');
         $this->compiler->compileFile('/nonexistent/page.xml');
+    }
+
+    /**
+     * Every malformed input must fail as a readable CompileException: never as a
+     * PHP warning escaping into output, and never as a TypeError from an array
+     * parameter. One row per guard, so an unguarded cast shows up here.
+     *
+     * @param array<string, mixed> $page
+     */
+    #[DataProvider('malformedPages')]
+    public function testMalformedInputFailsReadablyWithoutPhpWarnings(array $page): void
+    {
+        $warnings = [];
+        set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        });
+
+        try {
+            $this->compile($page);
+            $this->fail('应当编译失败');
+        } catch (CompileException) {
+            // expected: a readable compile error
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $warnings, '编译期不应泄漏 PHP 警告');
+    }
+
+    /** @return array<string, array{array<string, mixed>}> */
+    public static function malformedPages(): array
+    {
+        $fields = [['name' => 'a', 'label' => 'A']];
+
+        return [
+            'layout 非字符串' => [['layout' => ['a'], 'sections' => []]],
+            'title 非字符串' => [['title' => ['a'], 'layout' => 'layout/main', 'sections' => []]],
+            'sections 非映射' => [['layout' => 'layout/main', 'sections' => 'x']],
+            'sections 值为空' => [['layout' => 'layout/main', 'sections' => ['c' => null]]],
+            'body 非数组' => [['body' => 'x']],
+            'body 是单个节点映射' => [['body' => ['type' => 'text', 'text' => 'x']]],
+            'then 非数组' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => 'x']]]],
+            'else 是映射' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => ['type' => 'text', 'text' => 'x']]]]],
+            'each body 是映射' => [['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]]],
+            'el body 非数组' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]]],
+            'fields 是映射' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]]],
+            'method 是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => $fields]]]],
+            'required 是字符串' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]]],
+            'option 文本是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]]]]]]],
+            'columns 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]]],
+            'column content 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']]]]]]],
+        ];
     }
 
     /**

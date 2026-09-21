@@ -357,24 +357,38 @@ class Compiler
             ($this->warn)('page: title 仅在指定 layout 时生效，当前页面无 layout，title 已忽略');
         }
 
-        return $this->compileNodes($page['body'], 'body');
+        $body = $this->requireList($page['body'], 'body', '节点树数组');
+
+        return $this->compileNodes($body, 'body');
     }
 
     private function compileLayout(array $page): string
     {
-        $layout = $this->literal((string) $page['layout'], 'page', 'layout');
+        $layout = $page['layout'];
+        if (! is_string($layout)) {
+            $this->error('page: layout 必须是字符串，收到 ' . gettype($layout));
+        }
+        $layout = $this->literal($layout, 'page', 'layout');
         $out = "<?php \$this->extends('" . $this->str($layout) . "') ?>\n";
 
         $sections = $page['sections'];
+        if (! is_array($sections)) {
+            $this->error('page: sections 必须是 section 名到节点树的映射，收到 ' . gettype($sections));
+        }
+
         $ordered = [];
         if (array_key_exists('title', $page) && ! array_key_exists('title', $sections)) {
-            $ordered[] = ['name' => 'title', 'nodes' => [['type' => 'text', 'text' => (string) $page['title']]]];
+            $title = $page['title'];
+            if (! is_string($title)) {
+                $this->error('page: title 必须是字符串，收到 ' . gettype($title));
+            }
+            $ordered[] = ['name' => 'title', 'nodes' => [['type' => 'text', 'text' => $title]]];
         }
         foreach ($sections as $name => $nodes) {
-            if (! is_array($nodes)) {
-                $this->error('sections.' . $name . ': section 的值必须是节点树数组');
-            }
-            $ordered[] = ['name' => (string) $name, 'nodes' => $nodes];
+            $ordered[] = [
+                'name' => (string) $name,
+                'nodes' => $this->requireList($nodes, 'sections.' . $name, '节点树数组'),
+            ];
         }
 
         foreach ($ordered as $section) {
@@ -459,19 +473,16 @@ class Compiler
     {
         $when = $this->requireString($n, 'when', $path);
         $this->forwardedAttrs($n, ['when', 'then', 'else'], $path, false);   // if emits no tag
-        $then = $n['then'] ?? null;
-        if (! is_array($then)) {
+        if (! array_key_exists('then', $n)) {
             $this->error("{$path}: if 缺少 then（节点树数组）");
         }
+        $then = $this->requireList($n['then'], $path . '.then', '节点树数组');
 
         $cond = $this->compileCondition($when, $path);
 
         $out = "<?php if ({$cond}): ?>\n" . $this->compileNodes($then, $path . '.then');
         if (array_key_exists('else', $n)) {
-            $else = $n['else'];
-            if (! is_array($else)) {
-                $this->error("{$path}: if 的 else 必须是节点树数组");
-            }
+            $else = $this->requireList($n['else'], $path . '.else', '节点树数组');
             $out .= "\n<?php else: ?>\n" . $this->compileNodes($else, $path . '.else');
         }
 
@@ -487,10 +498,10 @@ class Compiler
             $this->error("{$path}: each 的 as 必须是合法变量名");
         }
 
-        $body = $n['body'] ?? null;
-        if (! is_array($body)) {
+        if (! array_key_exists('body', $n)) {
             $this->error("{$path}: each 缺少 body（节点树数组）");
         }
+        $body = $this->requireList($n['body'], $path . '.body', '节点树数组');
 
         $loop = "foreach ({$items} ?? [] as ";
         if (array_key_exists('index', $n)) {
@@ -518,10 +529,10 @@ class Compiler
         if ($method !== 'get' && $method !== 'post') {
             $this->error("{$path}: method 必须是 \"get\" 或 \"post\"");
         }
-        $fields = $n['fields'] ?? null;
-        if (! is_array($fields)) {
+        if (! array_key_exists('fields', $n)) {
             $this->error("{$path}: form 缺少 fields（字段数组）");
         }
+        $fields = $this->requireList($n['fields'], $path . '.fields', '字段数组');
 
         $attr = $this->forwardedAttrs($n, ['action', 'method', 'fields'], $path, true);
         $out = '<form action="' . $action . '" method="' . $method . '"' . $attr . '>';
@@ -557,6 +568,11 @@ class Compiler
         }
         if ($input !== 'select' && array_key_exists('options', $n)) {
             $this->error("{$path}: options 仅用于 select 字段");
+        }
+        // The `=== true` test below would silently ignore any other type, which
+        // is the silent drop this compiler refuses everywhere else.
+        if (array_key_exists('required', $n) && ! is_bool($n['required'])) {
+            $this->error("{$path}: required 必须是布尔值，收到 " . gettype($n['required']));
         }
 
         if ($input === 'submit') {
@@ -613,7 +629,12 @@ class Compiler
             $out .= '  <select name="' . $name . '" id="' . $name . '"' . $extra . '>';
             foreach ($options as $optValue => $optLabel) {
                 $optValue = $this->literal((string) $optValue, $path, 'option value');
-                $optLabel = $this->literal((string) $optLabel, $path, 'option 文本');
+                // Option text is a literal field, so it is a string or nothing —
+                // casting an array here would leak "Array to string conversion".
+                if (! is_string($optLabel)) {
+                    $this->error("{$path}: option \"{$optValue}\" 的文本必须是字符串，收到 " . gettype($optLabel));
+                }
+                $optLabel = $this->literal($optLabel, $path, 'option 文本');
                 $out .= "\n    <option value=\"" . $optValue . '">' . $optLabel . '</option>';
             }
 
@@ -640,10 +661,10 @@ class Compiler
         if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
             $this->error("{$path}: table 的 as 必须是合法变量名");
         }
-        $columns = $n['columns'] ?? null;
-        if (! is_array($columns)) {
+        if (! array_key_exists('columns', $n)) {
             $this->error("{$path}: table 缺少 columns（列数组）");
         }
+        $columns = $this->requireList($n['columns'], $path . '.columns', '列数组');
         $empty = array_key_exists('empty', $n) ? $this->literal($this->requireString($n, 'empty', $path), $path, 'empty') : null;
         $attr = $this->forwardedAttrs($n, ['items', 'as', 'empty', 'columns'], $path, true);
 
@@ -672,16 +693,7 @@ class Compiler
                 $bind = $this->requireString($column, 'bind', $columnPath);
                 $rows[] = '<td' . $columnAttr . '>' . $this->bindValue($as . '.' . $bind, $columnPath) . '</td>';
             } else {
-                $content = $column['content'];
-                if (! is_array($content)) {
-                    $this->error($columnPath . '.content: 必须是节点树数组');
-                }
-                // A bare node map passes is_array() and only fails deeper, as
-                // "content[type]: 节点必须是对象" — which blames the node rather
-                // than the missing list wrapper. Name the real fault here.
-                if (! array_is_list($content)) {
-                    $this->error($columnPath . '.content: 必须是节点树数组（列表），当前是单个节点映射；写单个节点请用 [ ] 包成列表');
-                }
+                $content = $this->requireList($column['content'], $columnPath . '.content', '节点树数组');
                 $rows[] = '<td' . $columnAttr . '>' . $this->compileNodes($content, $columnPath . '.content') . '</td>';
             }
         }
@@ -714,10 +726,7 @@ class Compiler
 
         $attrs = $this->forwardedAttrs($n, ['tag', 'body'], $path, true);
 
-        $body = $n['body'] ?? [];
-        if (! is_array($body)) {
-            $this->error("{$path}: el 的 body 必须是节点树数组");
-        }
+        $body = $this->requireList($n['body'] ?? [], $path . '.body', '节点树数组');
         $inner = $this->compileNodes($body, $path . '.body');
 
         return $inner === ''
@@ -852,6 +861,29 @@ class Compiler
         if ($open !== substr_count($text, '}}')) {
             $this->error("{$path}: 插值符号未配对（{{ 与 }} 数量不一致）");
         }
+    }
+
+    /**
+     * Guard a collection that has to be a list: node trees (then / else / body /
+     * sections.<name> / content) and the field and column lists.
+     *
+     * is_array() alone is not enough. A bare node map is an array too, so it
+     * passes and only fails deeper — as "content[type]: 节点必须是对象" — blaming
+     * a node that was never the problem instead of the missing list wrapper.
+     * Both failures are named here, where the mistake actually is.
+     *
+     * @return list<mixed>
+     */
+    private function requireList(mixed $value, string $where, string $expected): array
+    {
+        if (! is_array($value)) {
+            $this->error("{$where}: 必须是{$expected}，收到 " . gettype($value));
+        }
+        if (! array_is_list($value)) {
+            $this->error("{$where}: 必须是{$expected}（列表），当前是键值映射；请用 [ ] 包成列表");
+        }
+
+        return $value;
     }
 
     private function requireString(array $n, string $key, string $path): string

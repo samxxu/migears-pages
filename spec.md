@@ -44,7 +44,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 ### 3.3 极轻量
 
-实现规模保持在千行量级（编译器约 900 行，Renderer 约 50 行）。任何让实现显著膨胀的特性都拒绝。
+实现规模保持在千行量级（编译器约 950 行，Renderer 约 50 行）。任何让实现显著膨胀的特性都拒绝。
 
 ### 3.4 编译即校验
 
@@ -128,6 +128,22 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 ### 5.4 内嵌结构
 
 `field` 与 `column` 是内嵌结构：类型由位置决定。若写出 `type`，值必须与位置一致（`field` / `column`），否则编译错误。
+
+### 5.5 集合形态与类型守卫
+
+出现在结构位置的值分两种形态，越界即编译错误：
+
+| 位置 | 形态 | 元素 |
+|------|------|------|
+| `body`、`sections.<名>`、`if.then`、`if.else`、`each.body`、`el.body`、`column.content` | 列表 | 节点对象 |
+| `form.fields`、`table.columns` | 列表 | 字段 / 列对象 |
+| `sections`、`field.options`、`component.data` | 映射 | section 名 → 节点树；选项值 → 文本；数据名 → 字符串 |
+
+列表被写成映射（单个节点不加 `[ ]` 包裹、`fields:` 直接跟映射）是最常见的形态错误。这类值本身仍是数组，只查 `is_array()` 会放行，直到更深处才以一个指错对象的报错暴露（`content[type]: 节点必须是对象`）——把「缺列表包裹」误报成「节点不是对象」。因此所有列表入口统一由 `requireList()` 守卫，非数组与映射两种失误都在发生处点名，并说明收到什么类型。
+
+配套的标量类型守卫同理：`layout`、`title` 必须是字符串，`sections` 必须是映射，`field.required` 必须是布尔，`option` 文本必须是字符串。这些值此前靠 `(string)` 强转或 `=== true` 比较处理，遇到不符的值要么泄漏 PHP 警告（`Array to string conversion`），要么被静默忽略——两者都是本模块明令禁止的。
+
+**总契约**：编译期任何错误都必须是带节点路径的 `CompileException`；不得有 PHP 警告泄漏到输出，也不得因类型不符抛出原始 `TypeError`。
 
 ## 6. IR 契约：节点文法
 
@@ -362,8 +378,10 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 | 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | if 缺 when；level 为 7 |
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
 | 上下文错误 | bind/content 互斥等 | column 同时含 bind 与 content |
+| 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout 必须是字符串，收到 array |
 | method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
-| column.content 形态错误 | `content` 是单个节点映射而非节点列表 | columns[0].content: 必须是节点树数组（列表），当前是单个节点映射 |
+| 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
+| 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required 必须是布尔值，收到 string |
 | 字面量错误 | 字面量字段写了 `{{ }}` | "empty" 是字面量字段，不支持 {{ }} 插值 |
 | 内嵌结构类型错误 | field/column 的 type 与位置不符 | type 必须是 "field" |
 | 未知键 | 既非 DSL 字段，也不在透传白名单 | 未知属性 "levl" |
@@ -383,7 +401,7 @@ migears-pages/
 ├── README.md                双语（中英）、架构、安装、快速开始、数组 DSL 参考、前端包、错误处理、测试说明
 ├── LICENSE
 ├── src/
-│   ├── Compiler.php         编译器（核心，约 900 行）
+│   ├── Compiler.php         编译器（核心，约 950 行）
 │   ├── Renderer.php         一步渲染门面（约 50 行）
 │   └── Exception/
 │       └── CompileException.php
@@ -406,8 +424,11 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 结构 | heading 各级、越界 level 报错；link href/text 插值 |
 | 条件 | if then / then+else / `!` 取反 / when 缺失报错 |
 | 循环 | each 基础 / index / 嵌套 / items 缺失报错 |
-| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 |
-| 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 / content 非数组与单个节点映射均报可读错误 |
+| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 / required 非布尔 / option 文本非字符串 |
+| 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
+| 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
+| 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象` |
+| 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
 | 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section |
 | 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 |
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |
