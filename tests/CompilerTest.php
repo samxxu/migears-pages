@@ -244,6 +244,19 @@ final class CompilerTest extends TestCase
         );
     }
 
+    public function testColumnContentRejectsBareNodeMap(): void
+    {
+        // A single node written without the list wrapper is an array, so an
+        // is_array() guard lets it through and the failure surfaces later as
+        // "content[type]: 节点必须是对象" — a message that names the wrong fault.
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [
+                ['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']],
+            ]]]],
+            'content: 必须是节点树数组（列表）'
+        );
+    }
+
     public function testFormRendersLabelPerInputType(): void
     {
         $out = $this->compile(['body' => [[
@@ -281,6 +294,39 @@ final class CompilerTest extends TestCase
             ['body' => [['type' => 'form', 'action' => '/s', 'method' => 'put', 'fields' => [['name' => 'a', 'label' => 'A']]]]],
             'method 必须是 "get" 或 "post"'
         );
+    }
+
+    public function testFormMethodRejectsNonStringValuesWithoutLeakingWarning(): void
+    {
+        // Casting first would raise "Array to string conversion" — a PHP warning
+        // escaping into output — and then report a type fault as an enum fault.
+        $warnings = [];
+        set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        });
+
+        try {
+            $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => [['name' => 'a', 'label' => 'A']]]]]);
+            $this->fail('应当编译失败');
+        } catch (CompileException $e) {
+            $this->assertStringContainsString('method 必须是字符串 "get" 或 "post"，收到 array', $e->getMessage());
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $warnings, '编译期不应泄漏 PHP 警告');
+    }
+
+    public function testFormMethodRejectsNonStringScalars(): void
+    {
+        foreach ([true, 5] as $bad) {
+            $this->expectError(
+                ['body' => [['type' => 'form', 'action' => '/s', 'method' => $bad, 'fields' => [['name' => 'a', 'label' => 'A']]]]],
+                'method 必须是字符串 "get" 或 "post"，收到 ' . gettype($bad)
+            );
+        }
     }
 
     public function testSelectRejectsValueBindingAndNonSelectRejectsOptions(): void

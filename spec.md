@@ -362,6 +362,8 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 | 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | if 缺 when；level 为 7 |
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
 | 上下文错误 | bind/content 互斥等 | column 同时含 bind 与 content |
+| method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
+| column.content 形态错误 | `content` 是单个节点映射而非节点列表 | columns[0].content: 必须是节点树数组（列表），当前是单个节点映射 |
 | 字面量错误 | 字面量字段写了 `{{ }}` | "empty" 是字面量字段，不支持 {{ }} 插值 |
 | 内嵌结构类型错误 | field/column 的 type 与位置不符 | type 必须是 "field" |
 | 未知键 | 既非 DSL 字段，也不在透传白名单 | 未知属性 "levl" |
@@ -404,8 +406,8 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 结构 | heading 各级、越界 level 报错；link href/text 插值 |
 | 条件 | if then / then+else / `!` 取反 / when 缺失报错 |
 | 循环 | each 基础 / index / 嵌套 / items 缺失报错 |
-| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input |
-| 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 |
+| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 |
+| 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 / content 非数组与单个节点映射均报可读错误 |
 | 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section |
 | 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 |
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |

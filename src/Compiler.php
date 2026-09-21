@@ -507,7 +507,14 @@ class Compiler
     private function compileForm(array $n, string $path): string
     {
         $action = $this->interpolate($this->requireString($n, 'action', $path), $path);
-        $method = $this->literal((string) ($n['method'] ?? 'post'), $path, 'method');
+        // Check the type before touching the value: casting first would emit a
+        // PHP warning ("Array to string conversion") and then report a type
+        // fault with the enum message, which names the wrong problem.
+        $method = $n['method'] ?? 'post';
+        if (! is_string($method)) {
+            $this->error("{$path}: method 必须是字符串 \"get\" 或 \"post\"，收到 " . gettype($method));
+        }
+        $method = $this->literal($method, $path, 'method');
         if ($method !== 'get' && $method !== 'post') {
             $this->error("{$path}: method 必须是 \"get\" 或 \"post\"");
         }
@@ -665,10 +672,17 @@ class Compiler
                 $bind = $this->requireString($column, 'bind', $columnPath);
                 $rows[] = '<td' . $columnAttr . '>' . $this->bindValue($as . '.' . $bind, $columnPath) . '</td>';
             } else {
-                if (! is_array($column['content'])) {
+                $content = $column['content'];
+                if (! is_array($content)) {
                     $this->error($columnPath . '.content: 必须是节点树数组');
                 }
-                $rows[] = '<td' . $columnAttr . '>' . $this->compileNodes($column['content'], $columnPath . '.content') . '</td>';
+                // A bare node map passes is_array() and only fails deeper, as
+                // "content[type]: 节点必须是对象" — which blames the node rather
+                // than the missing list wrapper. Name the real fault here.
+                if (! array_is_list($content)) {
+                    $this->error($columnPath . '.content: 必须是节点树数组（列表），当前是单个节点映射；写单个节点请用 [ ] 包成列表');
+                }
+                $rows[] = '<td' . $columnAttr . '>' . $this->compileNodes($content, $columnPath . '.content') . '</td>';
             }
         }
         $head .= '</tr></thead>';
