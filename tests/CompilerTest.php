@@ -497,6 +497,9 @@ final class CompilerTest extends TestCase
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'div']]]));
         $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]], 'body: 必须是节点树数组，收到 string');
         $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => ['type' => 'text', 'text' => 'x']]]], 'body: 必须是节点树数组（列表）');
+        // Present but null is a mistake, not "no children" — an emptied key in a
+        // mapping source lands here.
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]], 'body: 必须是节点树数组，收到 NULL');
         $this->expectError(['body' => [['type' => 'el', 'tag' => '1div', 'body' => []]]], '非法的 tag');
         // uppercase is normalised, not rejected
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'DIV', 'body' => []]]]));
@@ -569,13 +572,125 @@ final class CompilerTest extends TestCase
             'else 是映射' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => ['type' => 'text', 'text' => 'x']]]]],
             'each body 是映射' => [['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]]],
             'el body 非数组' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]]],
+            'el body 是 null' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]]],
             'fields 是映射' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]]],
             'method 是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => $fields]]]],
             'required 是字符串' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]]],
             'option 文本是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]]]]]]],
             'columns 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]]],
             'column content 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']]]]]]],
+            'sections 是列表' => [['layout' => 'layout/main', 'sections' => [['type' => 'text', 'text' => 'x']]]],
+            'component data 键写插值' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['{{ a }}' => 'x']]]]],
+            'component data 是列表' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['x', 'y']]]]],
+            'select 上写 placeholder' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'placeholder' => 'p', 'options' => ['a' => 'A']]]]]]],
+            'text 上写 checked' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'checked' => 'a.b']]]]]],
+            'text 上写 rows' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'rows' => 4]]]]]],
+            'submit 上写 value' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'submit', 'value' => 'a.b']]]]]],
+            'hidden 上写 required' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'hidden', 'required' => true]]]]]],
         ];
+    }
+
+    public function testComponentDataKeysAreLiteralFields(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['{{ user.id }}' => 'x']]]],
+            '"data 键" 是字面量字段，不支持 {{ }} 插值'
+        );
+
+        // A literal key still compiles, and the value beside it still interpolates.
+        $this->assertStringContainsString(
+            "'title' => (\$user['name'] ?? ''),",
+            $this->compile(['body' => [['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}']]]])
+        );
+    }
+
+    public function testFieldFieldsAreScopedToTheirInputType(): void
+    {
+        $form = static fn (array $field): array => [
+            'body' => [['type' => 'form', 'action' => '/s', 'fields' => [$field]]],
+        ];
+        $base = ['name' => 'a', 'label' => 'A'];
+
+        $this->expectError(
+            $form(['input' => 'select', 'placeholder' => 'p', 'options' => ['x' => 'X']] + $base),
+            '"placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select"'
+        );
+        $this->expectError(
+            $form(['input' => 'text', 'checked' => 'user.ok'] + $base),
+            '"checked" 仅用于 checkbox 字段，当前 input 是 "text"'
+        );
+        $this->expectError(
+            $form(['input' => 'text', 'rows' => 4] + $base),
+            '"rows" 仅用于 textarea 字段，当前 input 是 "text"'
+        );
+        $this->expectError(
+            $form(['input' => 'submit', 'value' => 'user.label'] + $base),
+            'submit 字段不支持 value 绑定'
+        );
+        $this->expectError(
+            $form(['input' => 'hidden', 'required' => true] + $base),
+            'required 仅用于 text / password / email / number / textarea / select / checkbox 字段'
+        );
+    }
+
+    public function testRequiredIsEmittedForEveryInputTypeThatSupportsIt(): void
+    {
+        $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+            ['name' => 's', 'label' => 'S', 'input' => 'select', 'required' => true, 'options' => ['a' => 'A']],
+            ['name' => 'b', 'label' => 'B', 'input' => 'textarea', 'required' => true],
+            ['name' => 'c', 'label' => 'C', 'input' => 'checkbox', 'required' => true],
+        ]]]]);
+
+        $this->assertStringContainsString('<select name="s" id="s" required>', $out);
+        $this->assertStringContainsString('<textarea name="b" id="b" rows="4" required>', $out);
+        $this->assertStringContainsString('<input type="checkbox" name="c" id="c" required>', $out);
+    }
+
+    public function testMapsMustNotBeWrittenAsLists(): void
+    {
+        $this->expectError(
+            ['layout' => 'layout/main', 'sections' => [['type' => 'text', 'text' => 'x']]],
+            'page: sections 必须是 section 名到节点树的映射（键值映射），当前是列表'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['x', 'y']]]],
+            'component 的 data 必须是「键 => 字符串」的映射（键值映射），当前是列表'
+        );
+
+        // An empty array is an empty mapping too, so it stays legal.
+        $this->assertStringContainsString(
+            "extends('layout/main')",
+            $this->compile(['layout' => 'layout/main', 'sections' => []])
+        );
+    }
+
+    public function testRequiredPathsAreReportedWhenMissing(): void
+    {
+        $this->expectError(['body' => [['type' => 'if', 'then' => []]]], '缺少 string 字段 "when"');
+        $this->expectError(['body' => [['type' => 'each', 'body' => []]]], '缺少 string 字段 "items"');
+        $this->expectError(['body' => [['type' => 'table', 'columns' => []]]], '缺少 string 字段 "items"');
+    }
+
+    public function testHyphenFormOfColonDirectiveIsRejected(): void
+    {
+        // Alpine spells these with a colon; the bare 'x-' prefix would forward the
+        // hyphen form and the directive would silently do nothing.
+        $this->expectError(
+            ['body' => [['type' => 'el', 'tag' => 'div', 'x-on-click' => 'open = !open']]],
+            '请写 "x-on:click" 或 "@click"'
+        );
+    }
+
+    public function testNestedStructureTypeMustMatchItsPosition(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'type' => 'column']]]]],
+            'type 必须是 "field"'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'bind' => 'id', 'type' => 'field']]]]],
+            'type 必须是 "column"'
+        );
     }
 
     /**

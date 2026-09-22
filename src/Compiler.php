@@ -36,6 +36,28 @@ class Compiler
     private const INPUT_TYPES = ['text', 'password', 'email', 'number', 'textarea', 'select', 'checkbox', 'hidden', 'submit'];
 
     /**
+     * Fields that only mean something for particular input types. Written
+     * anywhere else they used to compile and then leave no trace in the output
+     * — the silent drop this module refuses everywhere else, and the reason each
+     * misuse is named where it happens instead.
+     *
+     * @var array<string, list<string>>
+     */
+    private const FIELD_SCOPES = [
+        'placeholder' => ['text', 'password', 'email', 'number'],
+        'checked' => ['checkbox'],
+        'rows' => ['textarea'],
+    ];
+
+    /**
+     * Input types whose `required` has an HTML meaning. Every other type would
+     * drop the attribute on the floor, so asking for it there is a mistake.
+     *
+     * @var list<string>
+     */
+    private const REQUIRED_INPUTS = ['text', 'password', 'email', 'number', 'textarea', 'select', 'checkbox'];
+
+    /**
      * Attributes the DSL does not define are forwarded verbatim only when they
      * belong to a known front-end convention or a common HTML hook. Everything
      * else is treated as a typo: silently dropping an Alpine directive the
@@ -371,10 +393,11 @@ class Compiler
         $layout = $this->literal($layout, 'page', 'layout');
         $out = "<?php \$this->extends('" . $this->str($layout) . "') ?>\n";
 
-        $sections = $page['sections'];
-        if (! is_array($sections)) {
-            $this->error('page: sections 必须是 section 名到节点树的映射，收到 ' . gettype($sections));
-        }
+        $sections = $this->requireMap(
+            $page['sections'],
+            'page',
+            'sections 必须是 section 名到节点树的映射'
+        );
 
         $ordered = [];
         if (array_key_exists('title', $page) && ! array_key_exists('title', $sections)) {
@@ -574,6 +597,19 @@ class Compiler
         if (array_key_exists('required', $n) && ! is_bool($n['required'])) {
             $this->error("{$path}: required 必须是布尔值，收到 " . gettype($n['required']));
         }
+        $this->assertFieldScope($n, $input, $path);
+
+        // A submit button takes its text from label; a bound value there would
+        // be read, ignored and lost.
+        if ($input === 'submit' && array_key_exists('value', $n)) {
+            $this->error("{$path}: submit 字段不支持 value 绑定，按钮文字请用 label");
+        }
+
+        $required = ($n['required'] ?? false) === true;
+        if ($required && ! in_array($input, self::REQUIRED_INPUTS, true)) {
+            $this->error("{$path}: required 仅用于 " . implode(' / ', self::REQUIRED_INPUTS)
+                . " 字段，当前 input 是 \"{$input}\"");
+        }
 
         if ($input === 'submit') {
             return '  <input type="submit" value="' . $label . '"' . $extra . '>';
@@ -594,7 +630,7 @@ class Compiler
             if (array_key_exists('placeholder', $n)) {
                 $out .= ' placeholder="' . $this->interpolate($this->requireString($n, 'placeholder', $path), $path) . '"';
             }
-            if (($n['required'] ?? false) === true) {
+            if ($required) {
                 $out .= ' required';
             }
             $out .= $extra . '>';
@@ -618,7 +654,8 @@ class Compiler
             }
             $content = $value !== '' ? $value : '';
 
-            return $out . '  <textarea name="' . $name . '" id="' . $name . '" rows="' . $rows . '"' . $extra . '>' . $content . '</textarea>';
+            return $out . '  <textarea name="' . $name . '" id="' . $name . '" rows="' . $rows . '"'
+                . ($required ? ' required' : '') . $extra . '>' . $content . '</textarea>';
         }
 
         if ($input === 'select') {
@@ -626,7 +663,8 @@ class Compiler
             if (! is_array($options)) {
                 $this->error("{$path}: select 字段缺少 options 映射");
             }
-            $out .= '  <select name="' . $name . '" id="' . $name . '"' . $extra . '>';
+            $out .= '  <select name="' . $name . '" id="' . $name . '"'
+                . ($required ? ' required' : '') . $extra . '>';
             foreach ($options as $optValue => $optLabel) {
                 $optValue = $this->literal((string) $optValue, $path, 'option value');
                 // Option text is a literal field, so it is a string or nothing —
@@ -643,6 +681,9 @@ class Compiler
 
         // checkbox
         $out .= '  <input type="checkbox" name="' . $name . '" id="' . $name . '"';
+        if ($required) {
+            $out .= ' required';
+        }
         if ($value !== '') {
             $out .= ' value="' . $value . '"';
         }
@@ -726,7 +767,13 @@ class Compiler
 
         $attrs = $this->forwardedAttrs($n, ['tag', 'body'], $path, true);
 
-        $body = $this->requireList($n['body'] ?? [], $path . '.body', '节点树数组');
+        // An absent body means "no children"; a body that is present but is not
+        // a node list — `null` from an emptied mapping key, a string, a bare
+        // node map — is a mistake and is named as one instead of being read as
+        // "empty".
+        $body = array_key_exists('body', $n)
+            ? $this->requireList($n['body'], $path . '.body', '节点树数组')
+            : [];
         $inner = $this->compileNodes($body, $path . '.body');
 
         return $inner === ''
@@ -743,17 +790,18 @@ class Compiler
             return "<?= \$this->component('" . $this->str($name) . "') ?>";
         }
 
-        $data = $n['data'];
-        if (! is_array($data)) {
-            $this->error("{$path}: component 的 data 必须是对象");
-        }
+        $data = $this->requireMap($n['data'], $path, 'component 的 data 必须是「键 => 字符串」的映射');
 
         $lines = [];
         foreach ($data as $key => $value) {
+            // The key names a variable inside the component, so it is a literal
+            // field: `{{ }}` there is not interpolated but emitted verbatim as
+            // part of the PHP array key.
+            $key = $this->literal((string) $key, $path, 'data 键');
             if (! is_string($value)) {
                 $this->error("{$path}: component data 的 \"{$key}\" 必须是字符串（值支持 {{ 路径 }} 插值）");
             }
-            $lines[] = "    '" . $this->str((string) $key) . "' => " . $this->interpolatePhp($value, $path . '.data.' . $key);
+            $lines[] = "    '" . $this->str($key) . "' => " . $this->interpolatePhp($value, $path . '.data.' . $key);
         }
 
         return "<?= \$this->component('" . $this->str($name) . "', [\n" . implode(",\n", $lines) . ",\n]) ?>";
@@ -886,6 +934,32 @@ class Compiler
         return $value;
     }
 
+    /**
+     * Guard a collection that has to be a map: `sections` and `component.data`.
+     * A positional list reaching one of these has no key to name its entries
+     * with, so the misuse is named here instead of surfacing later as a section
+     * or a data key called "0".
+     *
+     * An empty array passes: `[]` is an empty mapping as much as an empty list,
+     * and there are no entries whose meaning could be misread.
+     *
+     * $expected carries the whole predicate so the message keeps naming the
+     * field, e.g. "page: sections 必须是 section 名到节点树的映射".
+     *
+     * @return array<array-key, mixed>
+     */
+    private function requireMap(mixed $value, string $where, string $expected): array
+    {
+        if (! is_array($value)) {
+            $this->error("{$where}: {$expected}，收到 " . gettype($value));
+        }
+        if ($value !== [] && array_is_list($value)) {
+            $this->error("{$where}: {$expected}（键值映射），当前是列表");
+        }
+
+        return $value;
+    }
+
     private function requireString(array $n, string $key, string $path): string
     {
         if (! isset($n[$key]) || ! is_string($n[$key])) {
@@ -908,6 +982,24 @@ class Compiler
         }
         if ($n['type'] !== $expected) {
             $this->error("{$path}: type 必须是 \"{$expected}\"（{$expected} 是内嵌结构，位置已决定类型）");
+        }
+    }
+
+    /**
+     * Reject a field that has no meaning for the node's input type:
+     * `placeholder` on a select, `checked` on a text box, `rows` on a single
+     * line. Each of these used to compile and then leave no trace in the
+     * output, so the author's intent disappeared without a word — naming the
+     * misuse where it happens is the only honest answer.
+     */
+    private function assertFieldScope(array $n, string $input, string $path): void
+    {
+        foreach (self::FIELD_SCOPES as $field => $inputs) {
+            if (! array_key_exists($field, $n) || in_array($input, $inputs, true)) {
+                continue;
+            }
+            $this->error("{$path}: \"{$field}\" 仅用于 " . implode(' / ', $inputs)
+                . " 字段，当前 input 是 \"{$input}\"");
         }
     }
 
