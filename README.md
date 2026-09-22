@@ -79,6 +79,8 @@ $renderer = new Renderer(new Template(__DIR__ . '/views'), new Compiler(), __DIR
 echo $renderer->render($page, ['users' => [...]]);
 ```
 
+The cache directory is content-addressed and only ever added to: a changed declaration writes a new `page_<md5>.tpl.php` and leaves the old one behind. Call `$renderer->clearCache()` on deploy to drop those derived pages — it returns how many it removed, leaves foreign files alone, and pages are simply recompiled on the next render. Deleting the directory wholesale is always safe too.
+
 ## Array DSL Reference
 
 The page is a PHP array. The root has the fields `title` / `layout` / `body` / `sections`; `layout` + `sections` and `body` are mutually exclusive. Every node in `body` / `sections` is an array with a `type` key. Nested structures (`field`, `column`) are typed by their position — they need no `type`, and a written one must match.
@@ -113,6 +115,68 @@ The full node grammar, interpolation rules and error catalogue are specified in 
 - `migears/xml-pages` — `.page.xml` declarations, parsed with SimpleXML
 
 Both compile through this package, so behaviour is identical: same node vocabulary, same validation, same output. Their CLI binaries (`bin/yaml-pages`, `bin/xml-pages`) compile files and directories; this package has no CLI of its own because the array DSL has no source-file form — call `compile()` directly.
+
+## Custom Components
+
+This package ships no components of its own (`migears/xml-pages` and `migears/yaml-pages` bundle four built-ins; here you bring your own). A `component` node is handed straight to `migears/template`, so writing a custom component means writing an ordinary template file and making its name reachable from a registered path. There is no registry, no configuration, and no compile-time check that the file exists — `Renderer` registers only its own cache directory.
+
+Write the component as a plain template file (`views/components/my-card.php`):
+
+```php
+<div class="my-card">
+    <h3><?= $this->e($title ?? '') ?></h3>
+    <div><?= $this->raw((string) ($body ?? '')) ?></div>
+</div>
+```
+
+A `.tpl.php` component is equally valid — the engine compiles the `## ##` sugar to PHP on first render:
+
+```php
+<!-- views/components/my-card.tpl.php -->
+<div class="my-card">
+    <h3>## $title ?? '' ##</h3>
+    <div>### $body ?? '' ###</div>
+</div>
+```
+
+Four differences worth knowing before you pick the sugar:
+
+- `## $expr ##` compiles to `$this->e($expr)` and `### $expr ###` to `$this->raw($expr)`: raw is one extra `#`, not a different function.
+- `## $this->raw($expr) ##` does **not** produce raw output — the sugar wraps the expression in `$this->e()` regardless, so it silently escapes. That is why the built-in components reach for `<?= $this->raw(...) ?>` in plain PHP.
+- Every `.tpl.php` component leaves a compiled artifact in the template cache directory (writable; system temp when unset) and wins over a `.php` file of the same name. A `.php` component produces no artifact at all.
+- Plain PHP output is never auto-escaped: `<?= $title ?>` prints raw. So the sugar's escaped-by-default is the safer of the two once real PHP control flow enters the file.
+
+The sugar earns its keep in markup-heavy components — interpolation inside an attribute reads well, e.g. `class="badge-## $type ?? 'info' ##"`. When the escaping decision is the whole point of the component, or the component already needs `if` / `foreach`, plain PHP keeps it visible.
+
+Make its directory findable, then reference it by name:
+
+```php
+$tpl = new Template(__DIR__ . '/views');
+$tpl->addPath(__DIR__ . '/views/components');
+
+$renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
+echo $renderer->render([
+    'body' => [['type' => 'component', 'name' => 'my-card', 'data' => [
+        'title' => '{{ user.name }}',
+        'body' => 'body 由组件决定是否转义',
+    ]]],
+], ['user' => ['name' => 'Alice']]);
+```
+
+How `Template::findTemplate()` resolves the name:
+
+| Rule | Behaviour |
+|------|-----------|
+| Name → file | `<path>/<name>.tpl.php` first, then `<path>/<name>.php`. The `.tpl.php` pass runs over every path before `.php` does, so sugar wins over plain PHP regardless of order |
+| Path order | `addPath()` unshifts, so the directory added **last** is searched first — a same-named file there overrides an earlier one (theme override) |
+| Sub-directories | The name is a path relative to a registered directory: `admin/table` resolves `<path>/admin/table.php` |
+| Missing file | Not detected at compile time: rendering throws `RuntimeException: Component not found: <name>` |
+| Components in components | A component template may call `$this->component()` itself |
+
+Two limits worth designing around:
+
+- **Isolated scope.** A component is evaluated with its `data` map only — the page's other variables are not passed down, so everything it needs has to be handed over explicitly.
+- **String values only.** `data` values are validated at compile time and must be strings, and a `component` node emits no tag of its own, so it cannot carry `class` / `id` / `x-*`: wrap it in `el` when the wrapper needs attributes. Values arrive **unescaped**, so the component template chooses between `$this->e()` and `$this->raw()`.
 
 ## Errors
 
@@ -219,6 +283,8 @@ $renderer = new Renderer(new Template(__DIR__ . '/views'), new Compiler(), __DIR
 echo $renderer->render($page, ['users' => [...]]);
 ```
 
+缓存目录按内容寻址、只增不减：声明一变就写入新的 `page_<md5>.tpl.php`，旧文件留在原地。部署时调用 `$renderer->clearCache()` 即可清掉这些派生页面——它返回删除数量、保留外来文件，页面在下次渲染时重新编译；直接整体删除缓存目录也始终安全。
+
 ## 数组 DSL 参考
 
 页面是一个 PHP 数组。根字段为 `title` / `layout` / `body` / `sections`；`layout` + `sections` 与 `body` 互斥。`body` / `sections` 中的每个节点都是带 `type` 键的数组。内嵌结构（`field`、`column`）的类型由位置决定——不必写 `type`；若写出，值必须匹配。
@@ -253,6 +319,68 @@ echo $renderer->render($page, ['users' => [...]]);
 - `migears/xml-pages` —— `.page.xml` 声明，用 SimpleXML 解析
 
 两者都经由本包编译，行为完全一致：同一套节点词汇、同一套校验、同一份产物。它们的 CLI 二进制（`bin/yaml-pages`、`bin/xml-pages`）负责编译文件与目录；本包没有 CLI——数组 DSL 没有源文件形态，直接调用 `compile()` 即可。
+
+## 自定义组件
+
+本包不自带任何组件（`migears/xml-pages` 与 `migears/yaml-pages` 各随包分发四个内置组件；本包要自己写）。`component` 节点直接交给 `migears/template` 处理，所以「写自定义组件」就是写一个普通模板文件、再让这个名字能被某个已注册路径找到。没有注册表、没有配置，编译期也不会检查文件是否存在——`Renderer` 只注册自己的缓存目录。
+
+组件写成普通模板文件（`views/components/my-card.php`）：
+
+```php
+<div class="my-card">
+    <h3><?= $this->e($title ?? '') ?></h3>
+    <div><?= $this->raw((string) ($body ?? '')) ?></div>
+</div>
+```
+
+`.tpl.php` 组件同样可用——引擎会在首次渲染时把 `## ##` 糖编译成 PHP：
+
+```php
+<!-- views/components/my-card.tpl.php -->
+<div class="my-card">
+    <h3>## $title ?? '' ##</h3>
+    <div>### $body ?? '' ###</div>
+</div>
+```
+
+选择糖之前值得知道四条差异：
+
+- `## $expr ##` 编译为 `$this->e($expr)`，`### $expr ###` 编译为 `$this->raw($expr)`——raw 是多一个 `#`，不是换一个函数。
+- `## $this->raw($expr) ##` **不会**原样输出：糖无论如何都会把表达式包进 `$this->e()`，于是静默转义。内置组件因此在原生 PHP 里用 `<?= $this->raw(...) ?>`。
+- 每个 `.tpl.php` 组件都会在模板缓存目录留一份编译产物（目录需可写，未配置时是系统临时目录），且同名时优先于 `.php`；`.php` 组件不产生任何产物。
+- 原生 PHP 的输出永不自动转义：`<?= $title ?>` 是原样输出。所以一旦文件里出现真正的 PHP 控制流，糖的「默认转义」反而是两者中更安全的那个。
+
+糖的价值在标记密集的组件里体现得最明显——属性内插尤其好读，例如 `class="badge-## $type ?? 'info' ##"`。而当转义决策本身就是组件的重点，或组件已经需要 `if` / `foreach` 时，原生 PHP 能把它一直摆在明面上。
+
+让它所在目录可被找到，然后在页面里按名引用：
+
+```php
+$tpl = new Template(__DIR__ . '/views');
+$tpl->addPath(__DIR__ . '/views/components');
+
+$renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
+echo $renderer->render([
+    'body' => [['type' => 'component', 'name' => 'my-card', 'data' => [
+        'title' => '{{ user.name }}',
+        'body' => 'body 由组件决定是否转义',
+    ]]],
+], ['user' => ['name' => 'Alice']]);
+```
+
+`Template::findTemplate()` 的解析规则：
+
+| 规则 | 行为 |
+|------|------|
+| 名字 → 文件 | 先 `<path>/<name>.tpl.php`，再 `<path>/<name>.php`。`.tpl.php` 那一轮会遍历完全部路径才轮到 `.php`，所以无论路径顺序如何，糖语法文件都优先于原生 PHP |
+| 路径顺序 | `addPath()` 是 unshift，**后加**的目录先被搜索——同名文件放进去即覆盖先前的（主题覆盖） |
+| 子目录 | 名字是相对某个已注册目录的路径：`admin/table` 命中 `<path>/admin/table.php` |
+| 文件缺失 | 编译期不检测，渲染时才抛 `RuntimeException: Component not found: <name>` |
+| 组件套组件 | 组件模板里可以继续调用 `$this->component()` |
+
+设计组件前值得知道的两个限制：
+
+- **作用域隔离。** 组件只用它的 `data` 求值，页面的其它变量不会透传下来，需要什么就得显式传进去。
+- **只能传字符串。** `data` 的值在编译期校验，必须是字符串；且 `component` 节点自身不输出标签，挂不上 `class` / `id` / `x-*`，需要外层属性时用 `el` 包裹。值以**未转义**形式送达，转义与否由组件模板在 `$this->e()` 与 `$this->raw()` 之间决定。
 
 ## 错误处理
 

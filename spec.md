@@ -44,7 +44,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 ### 3.3 极轻量
 
-实现规模保持在千行量级（编译器约 950 行，Renderer 约 50 行）。任何让实现显著膨胀的特性都拒绝。
+实现规模保持在千行量级（编译器约 1050 行，Renderer 约 80 行）。任何让实现显著膨胀的特性都拒绝。
 
 ### 3.4 编译即校验
 
@@ -141,6 +141,8 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 列表被写成映射（单个节点不加 `[ ]` 包裹、`fields:` 直接跟映射）是最常见的形态错误。这类值本身仍是数组，只查 `is_array()` 会放行，直到更深处才以一个指错对象的报错暴露（`content[type]: 节点必须是对象`）——把「缺列表包裹」误报成「节点不是对象」。因此所有列表入口统一由 `requireList()` 守卫，非数组与映射两种失误都在发生处点名，并说明收到什么类型。
 
+映射被写成列表（`sections` 直接跟一个节点、`component.data` 直接跟若干值）同样没有键名可依，此前会一路走到更深处报出「section 名 0」「data 键 0」。这类入口统一由 `requireMap()` 守卫：空数组视为空映射（`[]` 既是空列表也是空映射，其中没有可被误读的条目）。`field.options` 是刻意的例外——选项值为纯数字时（如 `value="0"`）PHP 键本身就是 `0..n-1`，与列表形态无法区分，故该处只校验必须是数组。
+
 配套的标量类型守卫同理：`layout`、`title` 必须是字符串，`sections` 必须是映射，`field.required` 必须是布尔，`option` 文本必须是字符串。这些值此前靠 `(string)` 强转或 `=== true` 比较处理，遇到不符的值要么泄漏 PHP 警告（`Array to string conversion`），要么被静默忽略——两者都是本模块明令禁止的。
 
 **总契约**：编译期任何错误都必须是带节点路径的 `CompileException`；不得有 PHP 警告泄漏到输出，也不得因类型不符抛出原始 `TypeError`。
@@ -169,7 +171,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 ['type' => 'link', 'href' => '/users/{{ user.id }}/edit', 'text' => '编辑']
 ```
 
-`href`、`text` 必填，均支持插值。`target` 可选（支持插值）。
+`href`、`text` 必填，均支持插值。`target` 可选（支持插值），取值不校验——HTML 允许 `_blank` 之外的命名目标，枚举白名单会误杀合法用法。
 
 ### 6.4 if
 
@@ -196,7 +198,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 `items` 必填路径（`!` 取反只属于 `if.when`，此处写 `!` 按非法路径报错）；`as` 默认 `item`；`index` 可选变量名；`body` 必填节点树。编译为：
 
 ```php
-<?php foreach ($users as $i => $user): ?>
+<?php foreach ($users ?? [] as $i => $user): ?>
   ...body...
 <?php endforeach ?>
 ```
@@ -218,14 +220,16 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 | `name` | string 字面量 | 是 | 字段名（`name` / `id` 属性） |
 | `label` | string 字面量 | 是 | 标签文本；`submit` 类型时为按钮文字 |
 | `input` | enum | 否 | 见下，默认 `text` |
-| `value` | path | 否 | 绑定值，编译为 `value="## $path ?? '' ##"` |
-| `required` | bool | 否 | 默认 false，输出 `required` 属性 |
-| `placeholder` | string | 否 | 仅 text/password/email/number，支持插值 |
+| `value` | path | 否 | 绑定值，编译为 `value="## $path ?? '' ##"`；不支持 `submit`（按钮文字用 `label`） |
+| `required` | bool | 否 | 默认 false；在支持该属性的 input 上输出 `required`，`hidden` / `submit` 上写 `true` 属编译错误 |
+| `placeholder` | string | 否 | 仅 text/password/email/number，支持插值；其他 input 上属编译错误 |
 | `options` | array | 仅 select | `['admin' => '管理员']` 映射，value 与文本均为字面量 |
-| `checked` | path | 仅 checkbox | 真值时输出 `checked` 属性 |
-| `rows` | int | 仅 textarea | 默认 4，须为正整数 |
+| `checked` | path | 仅 checkbox | 真值时输出 `checked` 属性；其他 input 上属编译错误 |
+| `rows` | int | 仅 textarea | 默认 4，须为正整数；其他 input 上属编译错误 |
 
 `input` 枚举：`text`、`password`、`email`、`number`、`textarea`、`select`、`checkbox`、`hidden`、`submit`。非法枚举即编译错误。`select` 缺 `options`、`options` 用在不支持的 input 上、`select` 上使用 `value`，均编译错误。
+
+字段的**使用范围**同样是硬约束，越界即编译错误——这些字段此前会被静默丢弃，与本模块「不静默丢弃」的契约相悖：`placeholder` 仅 text/password/email/number、`checked` 仅 checkbox、`rows` 仅 textarea、`value` 不支持 submit、`required` 仅 text/password/email/number/textarea/select/checkbox。`required` 为真时在 select / textarea / checkbox 上同样输出 `required` 属性。
 
 编译产物（节选）：
 
@@ -256,7 +260,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 <?php if (($users ?? []) === []): ?>
   <tr><td colspan="2">暂无数据</td></tr>
 <?php else: ?>
-<?php foreach ($users as $user): ?>
+<?php foreach ($users ?? [] as $user): ?>
 <tr>
 <td>## $user['id'] ?? '' ##</td>
 <td>## $user['name'] ?? '' ##</td>
@@ -290,7 +294,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 ['type' => 'el', 'tag' => 'div', 'x-data' => '{ open: false }', 'body' => [...]]
 ```
 
-`tag` 必填（小写 HTML 标签名，`/^[a-z][a-z0-9-]*$/`）；`body` 为子节点树，可省略（视为空）。接受任意透传属性。编译为：
+`tag` 必填（小写 HTML 标签名，`/^[a-z][a-z0-9-]*$/`）；`body` 为子节点树，可省略（省略即视为空）。省略与「写了个非列表值」不同：`body` 写成 `null`（映射源里留空的键）、字符串或单个节点映射都是编译错误，不会被当成空 body。接受任意透传属性。编译为：
 
 ```php
 <div x-data="{ open: false }">
@@ -312,7 +316,7 @@ path   := segment ( "." segment )*
 segment := [A-Za-z_][A-Za-z0-9_]*
 ```
 
-首段即变量名，后续段为数组键访问。编译后的访问统一带 `?? ''`（文本/属性上下文）或 `?? null`（条件/循环上下文）兜底。
+首段即变量名，后续段为数组键访问。编译后的访问按上下文带兜底：文本/属性上下文 `?? ''`、条件上下文 `?? null`、循环上下文 `?? []`（`each.items` / `table.items`，让空数据自然渲染为空而不是报错）。
 
 ### 7.2 插值 `{{ path }}` 的两种上下文
 
@@ -323,7 +327,7 @@ segment := [A-Za-z_][A-Za-z0-9_]*
 
 PHP 上下文绝不能输出 `## ##` 糖——它会被 TemplateCompiler 二次替换进 PHP 字符串字面量，造成语法错误。
 
-### 7.3 非法表达式
+### 7.3 非法路径与插值符号
 
 任何 `{{ ... }}` 内不符合路径文法的内容（函数调用、算术、字符串字面量、嵌套插值）都是编译错误。插值符号最多两个花括号：出现 `{{{` 或 `}}}` 即编译错误（三个花括号会骗过配对计数，把错乱花括号留在产物里）。
 
@@ -357,8 +361,9 @@ echo $renderer->render($page, $data);
 ```
 
 - 内部完成：`compile()` → 写入 `$cacheDir`（内容寻址：`page_<md5(source)>.tpl.php`，声明不变不重写）→ `$template->render()`。
-- 构造时把 `$cacheDir` 注册进 `$template` 的搜索路径，布局与组件仍走用户已配置的模板路径。
+- 构造时把 `$cacheDir` 注册进 `$template` 的搜索路径，布局与组件仍走用户已配置的模板路径。因为是 unshift，派生目录排在用户模板目录**之前**：正常命名（`page_<md5>`）不会碰撞，但方向上是「派生物优先」。
 - 两次渲染同一声明时命中缓存文件，只做一次磁盘写入。
+- 缓存**只增不减**：声明一变就写新文件，旧文件不自动清理。`clearCache()` 删除本类写出的 `page_*.tpl.php` 并返回删除数量（重复调用返回 0），缓存目录本身保留，页面在下次 `render()` 时重新编译回填；清理只按该命名精确匹配，因此共享该目录的手写模板、外来文件与模板编译器产物都不受影响。模板编译器自身的产物归 `Template` 管理，不在本 API 范围内——要一次性重置两处，整体删除缓存目录仍然安全。
 
 ## 10. 错误处理
 
@@ -373,7 +378,7 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 | 类别 | 检测 | 示例 |
 |------|------|------|
 | 根类型错误 | 根不是数组/结构不符 | page: 未知字段 "foo" |
-| 结构错误 | 顶层规则违反 | 同时指定 body 与 sections |
+| 结构错误 | 顶层规则违反 | 同时指定 layout 与 body |
 | 未知节点 | type 不在词表 | 未知节点类型 "foo" |
 | 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | if 缺 when；level 为 7 |
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
@@ -383,6 +388,8 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 | 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
 | 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required 必须是布尔值，收到 string |
 | 字面量错误 | 字面量字段写了 `{{ }}` | "empty" 是字面量字段，不支持 {{ }} 插值 |
+| 映射形态错误 | `sections` / `component.data` 写成列表 | page: sections 必须是 section 名到节点树的映射（键值映射），当前是列表 |
+| 字段使用范围错误 | `placeholder` / `checked` / `rows` / `value` / `required` 用在不支持的 input 上 | "placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select" |
 | 内嵌结构类型错误 | field/column 的 type 与位置不符 | type 必须是 "field" |
 | 未知键 | 既非 DSL 字段，也不在透传白名单 | 未知属性 "levl" |
 | 连字符指令名 | `x-on-*` / `x-bind-*` / `x-transition-*` | 请写 "x-on:click" 或 "@click" |
@@ -397,12 +404,12 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 
 ```
 migears-pages/
-├── composer.json            name: migears/pages; require: php >=8.1, migears/template ^2.0
+├── composer.json            name: migears/pages; require: php ^8.1, migears/template ^2.0
 ├── README.md                双语（中英）、架构、安装、快速开始、数组 DSL 参考、前端包、错误处理、测试说明
 ├── LICENSE
 ├── src/
-│   ├── Compiler.php         编译器（核心，约 950 行）
-│   ├── Renderer.php         一步渲染门面（约 50 行）
+│   ├── Compiler.php         编译器（核心，约 1050 行）
+│   ├── Renderer.php         一步渲染门面（约 80 行）
 │   └── Exception/
 │       └── CompileException.php
 └── tests/
@@ -424,23 +431,23 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 结构 | heading 各级、越界 level 报错；link href/text 插值 |
 | 条件 | if then / then+else / `!` 取反 / when 缺失报错 |
 | 循环 | each 基础 / index / 嵌套 / items 缺失报错 |
-| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 / required 非布尔 / option 文本非字符串 |
+| 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 / required 非布尔 / option 文本非字符串 / placeholder、checked、rows、value、required 越界报错 / required 在 select、textarea、checkbox 上输出 |
 | 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
-| 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象` |
+| 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
 | 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section |
-| 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 |
+| 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 / data 键写 `{{ }}` 报错 / data 写成列表报错 |
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |
 | 内嵌结构 | `type: field` / `type: column` 写对可通过，写成另一种即报错 |
-| 字面量 | `field.label`、`table.empty`、`option` 等字面量字段写 `{{ }}` 报错 |
+| 字面量 | `field.label`、`table.empty`、`option`、`component.data` 的键等字面量字段写 `{{ }}` 报错 |
 | 透传 | Alpine / Vue / htmx / Livewire 指令与 `class`/`id`/`style` 透传；`@click` 原样；值转义；值内插值；标量归一（整数/布尔/空值）；重复属性报错 |
 | 透传误用 | 未知键报错；无标签节点承载属性报错；页面根未知字段报错 |
-| el | 带 body / 空 body / 缺 tag 报错 / 非法 tag 报错 |
+| el | 带 body / 空 body / 缺 tag 报错 / 非法 tag 报错 / body 写成 null 报错 |
 | 定向拦截 | `x-on-click` 报错并提示 `x-on:click` 或 `@click` |
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
-| 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 声明变更重渲染 / 组件经模板路径解析 |
+| 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 
 ## 13. 明确不做（后续候选）
 
