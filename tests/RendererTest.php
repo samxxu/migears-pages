@@ -128,6 +128,46 @@ class RendererTest extends TestCase
         self::assertCount(2, glob($this->cacheDir . '/*.tpl.php') ?: []);
     }
 
+    public function testClearCacheRemovesDerivedPagesAndRefillsThem(): void
+    {
+        $renderer = new Renderer(
+            new Template(__DIR__ . '/fixtures/views'),
+            new Compiler(),
+            $this->cacheDir
+        );
+
+        $renderer->render(['body' => [['type' => 'text', 'text' => 'v1']]]);
+        $renderer->render(['body' => [['type' => 'text', 'text' => 'v2']]]);
+
+        self::assertSame(2, $renderer->clearCache());
+        self::assertCount(0, glob($this->cacheDir . '/page_*.tpl.php') ?: []);
+        self::assertSame(0, $renderer->clearCache(), '重复清理应为空操作');
+        self::assertDirectoryExists($this->cacheDir, '清理只删派生页面，不删目录');
+
+        self::assertSame('v1', $renderer->render(['body' => [['type' => 'text', 'text' => 'v1']]]));
+        self::assertCount(1, glob($this->cacheDir . '/page_*.tpl.php') ?: []);
+    }
+
+    public function testClearCacheKeepsForeignFiles(): void
+    {
+        $renderer = new Renderer(
+            new Template(__DIR__ . '/fixtures/views'),
+            new Compiler(),
+            $this->cacheDir
+        );
+
+        $renderer->render(['body' => [['type' => 'text', 'text' => 'hi']]]);
+        mkdir($this->cacheDir . '/layout', 0755, true);
+        file_put_contents($this->cacheDir . '/card.php', '<?= "card" ?>');
+        file_put_contents($this->cacheDir . '/layout/main.php', '<?= $content ?>');
+        file_put_contents($this->cacheDir . '/page_handwritten.php', '<?= 1 ?>');
+
+        self::assertSame(1, $renderer->clearCache());
+        self::assertFileExists($this->cacheDir . '/card.php');
+        self::assertFileExists($this->cacheDir . '/layout/main.php');
+        self::assertFileExists($this->cacheDir . '/page_handwritten.php', '只按 page_*.tpl.php 精确匹配，不误删同名前缀的文件');
+    }
+
     public function testRendersComponentThroughTemplatePaths(): void
     {
         $tpl = new Template(__DIR__ . '/fixtures/views');

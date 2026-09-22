@@ -15,6 +15,9 @@ use MiGears\Template\Template;
  * declaration changes) and handed to the template engine, which performs
  * the second compilation and executes the page. Layouts and components
  * resolve through the same paths the Template already knows.
+ *
+ * The derived pages are only ever added to, never pruned; clearCache()
+ * drops the ones this renderer wrote when you want a cold start.
  */
 class Renderer
 {
@@ -47,6 +50,29 @@ class Renderer
         }
 
         return $this->template->render(basename($file, '.tpl.php'), $data);
+    }
+
+    /**
+     * Remove the derived page templates this renderer wrote.
+     *
+     * Only files matching the content-addressed name produced by render()
+     * are removed, so a cache directory shared with hand-written templates
+     * (or with the template compiler's own artifacts) keeps them intact.
+     * Pages are simply compiled again on the next render() call.
+     *
+     * @return int number of files removed
+     */
+    public function clearCache(): int
+    {
+        $removed = 0;
+
+        foreach (glob($this->cacheDir . '/page_*.tpl.php') ?: [] as $file) {
+            if (is_file($file) && @unlink($file)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
     }
 
     private function cacheFile(string $source): string
