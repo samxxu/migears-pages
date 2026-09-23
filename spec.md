@@ -374,12 +374,14 @@ echo $renderer->render($page, $data);
 
 `MiGears\Pages\Html` 是给页面作者用的语法：一个节点一个工厂，工厂名与它输出的 HTML 对齐，其余字段用同名成员方法补齐。
 
+**工厂名全大写，成员方法小写。** 大写是节点、小写是字段，`h5::INPUT('email')->label('邮箱')` 因此读起来就是「标签加属性」。`->THEN()`、`->ELSE()` 是仅有的两个大写方法，因为它们命名的是语句而不是属性。两点必须记明：一是 PHP 方法名不区分大小写，工厂名的小写拼写与全大写指向同一个方法，本层无法拦截小写写法；二是全大写方法名偏离 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。约定由 `tests/FactoryNamingTest.php` 守住——它检查 `Html` 声明的方法名，并扫描本包自己的 README、规格、`docs/`、示例与源码里工厂调用的拼写。单个提到标签名时按 HTML 习惯写小写（`textarea`、`select`），只有工厂调用处的名字全大写；归一后的 `type` 也仍是小写词表（`h5::IF` → `type: if`），与 XML、YAML 解析出的模型一致。
+
 ```php
 use MiGears\Pages\Html as h5;
 
-h5::heading(2)->text('用户列表')->id('usersTitle')->class('page-title')
-h5::table('users')->columns([h5::col('姓名')->pop('{{ row.name }}')])->empty('暂无数据')
-h5::form('/users/save')->fields([h5::input('email')->label('邮箱')->type('email')])
+h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title')
+h5::TABLE('users')->columns([h5::COL('姓名')->pop('{{ row.name }}')])->empty('暂无数据')
+h5::FORM('/users/save')->fields([h5::INPUT('email')->label('邮箱')->type('email')])
 ```
 
 **它只是语法糖，落地形态仍是数组。** 工厂返回 `Node` 对象，`Compiler::compile()` 在入口把整棵树递归归一成 §4 的数组 IR；此后与手写数组、XML、YAML 走同一条编译路径——同一套节点词表、同一套校验、同一套错误文案。前端包 `parse()` 产出的仍是数组，本层对它们没有任何影响。
@@ -390,28 +392,28 @@ h5::form('/users/save')->fields([h5::input('email')->label('邮箱')->type('emai
 
 | 工厂 | 参数 | 归一后的节点 |
 |------|------|--------------|
-| `h5::text` | `text` | `type: text` |
-| `h5::heading` | `level`（默认 1） | `type: heading` |
-| `h5::link` | `href` | `type: link` |
-| `h5::if` | `when` | `type: if` |
-| `h5::each` | `items` | `type: each` |
-| `h5::form` | `action` | `type: form` |
-| `h5::input` | `name` | `type: field` + `input: text` |
-| `h5::textarea` | `name` | `type: field` + `input: textarea` |
-| `h5::select` | `name` | `type: field` + `input: select` |
-| `h5::table` | `items` | `type: table` |
-| `h5::col` | `label` | `type: column` |
-| `h5::component` | `name` | `type: component` |
-| `h5::el` | `tag` | `type: el` |
+| `h5::TEXT` | `text` | `type: text` |
+| `h5::HEADING` | `level`（默认 1） | `type: heading` |
+| `h5::LINK` | `href` | `type: link` |
+| `h5::IF` | `when` | `type: if` |
+| `h5::EACH` | `items` | `type: each` |
+| `h5::FORM` | `action` | `type: form` |
+| `h5::INPUT` | `name` | `type: field` + `input: text` |
+| `h5::TEXTAREA` | `name` | `type: field` + `input: textarea` |
+| `h5::SELECT` | `name` | `type: field` + `input: select` |
+| `h5::TABLE` | `items` | `type: table` |
+| `h5::COL` | `label` | `type: column` |
+| `h5::COMPONENT` | `name` | `type: component` |
+| `h5::EL` | `tag` | `type: el` |
 
 成员方法按归属分三组：
 
-- **基类方法**（字段名即 §5 / §6 的字段名）：`text`、`target`、`then`、`else`、`body`、`as`、`index`、`fields`、`method`、`columns`、`empty`、`data`、`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`、`pop`、`content`。用错节点（如 `heading` 上调 `label()`）不在此层拦截，由编译器的未知键检查点名。
-- **属性方法**：只出现在输出标签的节点（`heading`、`link`、`form`、`table`、`el`，以及表单控件）上——`class`、`id`、`style`、`attr(name, value)`、`on(event, expression)`（输出 `@event`）、`bind(name)`（输出 `bind="name"`，值是浏览器端变量名）。不输出标签的节点没有这些方法，写出来是 PHP 层的 `undefined method`。
-- **控件方法**：只有 `h5::input` 有 `type(control)`（`type` 是 `<input>` 独有的属性）。`h5::textarea` 与 `h5::select` 的控件由工厂一次定下。三者都有 `popAndBind(reference, attribute = 'bind')`：`pop` 与 `bind` 合用的 shortcut，把字段的 `value` 与该属性（默认 `bind`，可传 `x-model` / `v-model`）写成同一个数据引用，用于前后端变量同名的常见情形；两侧不一致时分开写 `value()` 与 `bind()`。
+- **基类方法**（字段名即 §5 / §6 的字段名）：`text`、`target`、`THEN`、`ELSE`、`body`、`as`、`index`、`fields`、`method`、`columns`、`empty`、`data`、`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`、`pop`、`content`。用错节点（如 `HEADING` 上调 `label()`）不在此层拦截，由编译器的未知键检查点名。
+- **属性方法**：只出现在输出标签的节点（`HEADING`、`LINK`、`FORM`、`TABLE`、`EL`，以及表单控件）上——`class`、`id`、`style`、`attr(name, value)`、`on(event, expression)`（输出 `@event`）、`bind(name)`（输出 `bind="name"`，值是浏览器端变量名）。不输出标签的节点没有这些方法，写出来是 PHP 层的 `undefined method`。
+- **控件方法**：只有 `h5::INPUT` 有 `type(control)`（`type` 是 `<input>` 独有的属性）。`h5::TEXTAREA` 与 `h5::SELECT` 的控件由工厂一次定下。三者都有 `popAndBind(reference, attribute = 'bind')`：`pop` 与 `bind` 合用的 shortcut，把字段的 `value` 与该属性（默认 `bind`，可传 `x-model` / `v-model`）写成同一个数据引用，用于前后端变量同名的常见情形；两侧不一致时分开写 `value()` 与 `bind()`。
 - **服务端与浏览器端的分工**：`pop` / `value` 走服务端（编译成 `## $var['key'] ?? '' ##`，渲染时求值），`bind` 只产出属性、名字交给浏览器（值必须是 JS 变量名/路径，写 `{{ }}` 即编译错误）。
 
-**重复设置立即抛 `\LogicException`**，沿用「不静默覆盖」的立场：同一字段写两次（`->text('a')->text('b')`）、同一属性写两次（`->class('a')->class('b')`）、`h5::input(...)->type('a')->type('b')` 都直接失败。`Node::toArray()` 可取回数组形态，便于在编译前检查。
+**重复设置立即抛 `\LogicException`**，沿用「不静默覆盖」的立场：同一字段写两次（`->text('a')->text('b')`）、同一属性写两次（`->class('a')->class('b')`）、`h5::INPUT(...)->type('a')->type('b')` 都直接失败。`Node::toArray()` 可取回数组形态，便于在编译前检查。
 
 ## 11. 错误处理
 
@@ -471,6 +473,7 @@ migears-pages/
     ├── CompilerTest.php     节点编译、校验、插值、透传断言
     ├── RendererTest.php     经 migears/template 完整渲染验证
     ├── HtmlTest.php         Html 工厂：归一结果与手写数组逐字节一致
+    ├── FactoryNamingTest.php 命名约定守卫：工厂名全大写、成员方法小写（§10）
     └── fixtures/
         └── views/           渲染测试用布局
 ```
@@ -491,6 +494,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 表格 | pop 列（`{{ row.x }}`）/ content 列 / empty / as 默认与自定义 / 行变量校验（裸路径、别的变量报错）/ pop+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
 | bind | 任意标签与字段可输出 `bind="js.name"`；值含 `{{ }}` 或不是 JS 名字时报错；`popAndBind` 同时写出 value 与 bind（含 `x-model` 拼写） |
 | 字段 id | `id` 默认等于 `name`（label 的 `for` 同值）；显式 `id` 覆盖它且只输出一次 |
+| 工厂命名 | `Html` 的 13 个静态工厂声明为全大写（`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`），且没有多出别的静态方法；`THEN` / `ELSE` 是仅有的两个大写成员方法；README、`docs/`、`spec.md`、示例、源码与测试里出现的工厂调用拼写全部大写（防文档漂移，见 §10） |
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
 | 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |

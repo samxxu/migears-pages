@@ -5,21 +5,21 @@
 
 ## 一、构造器在整套体系里的位置
 
-`migears/pages` 的输入是一份 PHP 数组，这份数组的形状就是它的 IR 契约——`spec.md` 第 4 到第 7 节定义的「页面声明、字段规则、节点文法、数据绑定」。流式构造器不修改这份契约：每个 `h5::xxx()` 返回一个节点对象，链式方法写入字段，编译器在 `compile()` 入口把这些对象归一成数组，之后的一切与手写数组完全相同。
+`migears/pages` 的输入是一份 PHP 数组，这份数组的形状就是它的 IR 契约——`spec.md` 第 4 到第 7 节定义的「页面声明、字段规则、节点文法、数据绑定」。流式构造器不修改这份契约：每个工厂方法返回一个节点对象，链式方法写入字段，编译器在 `compile()` 入口把这些对象归一成数组，之后的一切与手写数组完全相同。
 
 ```php
-h5::heading(2)->text('用户列表')->id('usersTitle')
+h5::HEADING(2)->text('用户列表')->id('usersTitle')
 // 归一为
 ['type' => 'heading', 'level' => 2, 'text' => '用户列表', 'id' => 'usersTitle']
 ```
 
 ```php
-h5::textarea('bio')->label('简介')->rows(5)
+h5::TEXTAREA('bio')->label('简介')->rows(5)
 // 归一为
 ['type' => 'field', 'input' => 'textarea', 'name' => 'bio', 'label' => '简介', 'rows' => 5]
 ```
 
-三个控件工厂（`input`、`textarea`、`select`）产出 IR 的 `field` 结构，`col` 产出 `column` 结构；归一化之后与手写数组逐字节相同。
+三个控件工厂（`INPUT`、`TEXTAREA`、`SELECT`）产出 IR 的 `field` 结构，`COL` 产出 `column` 结构；归一化之后与手写数组逐字节相同。注意大小写只存在于调用点这一层：工厂名大写，归一后的 `type` 仍是小写词表（`h5::IF(...)` 落到 `['type' => 'if', ...]`），与 XML、YAML 两个前端解析出的模型保持一致。
 
 归一化发生在 `compile()` 这一个入口，且只认 `MiGears\Pages\Node` 的实例；XML 与 YAML 两个前端包仍然只产出数组，它们的路径与校验一行都不受影响。因此三个入口共用同一套校验与同一套错误文案，构造器只做形状转换，不重复校验——写错的路径、越界的 `level`、放错位置的 `placeholder`，仍然由编译器在编译期点名。
 
@@ -39,63 +39,65 @@ use MiGears\Template\Template;
 $compiler = new Compiler();
 $source = $compiler->compile([
     'body' => [
-        h5::heading(2)->text('用户列表'),
-        h5::text('共 {{ total }} 人'),
+        h5::HEADING(2)->text('用户列表'),
+        h5::TEXT('共 {{ total }} 人'),
     ],
 ]);
 $compiler->compileToFile(...);   // 或自行写盘
 
 // 或者一步渲染
 $renderer = new Renderer(new Template(__DIR__ . '/views'), new Compiler(), __DIR__ . '/cache/pages');
-echo $renderer->render(['body' => [h5::text('你好，{{ user.name }}')]], ['user' => ['name' => '张三']]);
+echo $renderer->render(['body' => [h5::TEXT('你好，{{ user.name }}')]], ['user' => ['name' => '张三']]);
 ```
 
 节点对象可以嵌在数组里、也可以互相嵌套，编译器递归归一：
 
 ```php
-h5::each('users')->body([
-    h5::el('li')->class('item')->body([h5::text('{{ user.name }}')]),
+h5::EACH('users')->body([
+    h5::EL('li')->class('item')->body([h5::TEXT('{{ user.name }}')]),
 ])
 ```
 
-别名由调用方决定，`h5` 只是本文的选择——写成 `use MiGears\Pages\Html as h;` 后，`h::textarea('bio')` 同样成立。
+别名由调用方决定，`h5` 只是本文的选择——写成 `use MiGears\Pages\Html as h;` 后，`h::TEXTAREA('bio')` 同样成立。
 
-## 三、三条规则
+## 三、四条规则
 
-**工厂名与 HTML 元素对齐。** `input`、`textarea`、`select`、`table`、`col`、`form`、`el` 就是标签名；`heading` 对应 `<h1>`–`<h6>`，`link` 对应 `<a>`。不输出标签的四个用控制流与组件的语义命名：`text`、`if`、`each`、`component`。表单控件不再有笼统的 `field` 工厂，写哪种控件就用哪个工厂。
+**工厂名全大写，成员方法小写。** 节点叫 `h5::TEXTAREA`、`h5::IF`，字段叫 `->label()`、`->pop()`：大写是节点，小写是字段，`h5::INPUT('email')->label('邮箱')` 一眼就是「标签加属性」，与 HTML 自己的观感一致。两个控制流分支跟着节点走，写成 `->THEN()`、`->ELSE()`，因为它们命名的是语句而不是属性。需要注意 PHP 的方法名不区分大小写，把工厂名写成小写拼写照样能跑，语言层面拦不住，所以这条约定由 `tests/FactoryNamingTest.php` 守着——它检查 `Html` 声明的方法名，并扫本包自己的文档、规格、示例与源码。单个提到标签名时按 HTML 习惯写小写（`textarea`、`select`），只有工厂调用处的名字全大写。
+
+**工厂名与 HTML 元素对齐。** `INPUT`、`TEXTAREA`、`SELECT`、`TABLE`、`COL`、`FORM`、`EL` 就是标签名；`HEADING` 对应 `<h1>`–`<h6>`，`LINK` 对应 `<a>`。不输出标签的四个用控制流与组件的语义命名：`TEXT`、`IF`、`EACH`、`COMPONENT`。表单控件不再有笼统的 `field` 工厂，写哪种控件就用哪个工厂。
 
 **构造函数只收「离开它这个节点就不成立」的那个值。** 标题的级别、元素的标签名、循环的数据源、表单的提交地址、链接的目标地址、组件的名字、控件的字段名、列的标题——各一个参数。字段再多也不进构造函数。
 
-**其余一切都是成员方法，方法名尽量与 HTML 同名。** 是 HTML 属性的就用属性名（`->type()`、`->href()`、`->target()`、`->method()`、`->value()`、`->placeholder()`、`->checked()`、`->rows()`、`->required()`、`->class()`、`->id()`、`->style()`），是 HTML 元素的就用元素名，没有对应标签的用一个贴合组件语义的名字（`->label()`、`->options()`、`->body()`、`->then()`、`->else()`、`->as()`、`->index()`、`->columns()`、`->empty()`、`->pop()`、`->bind()`、`->popAndBind()`、`->content()`、`->data()`）。
+**其余一切都是成员方法，方法名尽量与 HTML 同名。** 是 HTML 属性的就用属性名（`->type()`、`->href()`、`->target()`、`->method()`、`->value()`、`->placeholder()`、`->checked()`、`->rows()`、`->required()`、`->class()`、`->id()`、`->style()`），是 HTML 元素的就用元素名，没有对应标签的用一个贴合组件语义的名字（`->label()`、`->options()`、`->body()`、`->as()`、`->index()`、`->columns()`、`->empty()`、`->pop()`、`->bind()`、`->popAndBind()`、`->content()`、`->data()`）；只有 `->THEN()`、`->ELSE()` 按语句而不是属性命名。
 
-**属性类方法只长在输出标签的节点上。** `heading`、`link`、`form`、`table`、`el` 有 `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`；`text`、`if`、`each`、`component` 没有这些方法——它们是 PHP 层的 `undefined method`，而不是等到编译期才被发现。手写数组若给这些节点挂属性，仍由编译器报「节点 "text" 不输出标签，请用 type: el 包裹内容」。
+**属性类方法只长在输出标签的节点上。** `HEADING`、`LINK`、`FORM`、`TABLE`、`EL` 有 `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`；`TEXT`、`IF`、`EACH`、`COMPONENT` 没有这些方法——它们是 PHP 层的 `undefined method`，而不是等到编译期才被发现。手写数组若给这些节点挂属性，仍由编译器报「节点 "text" 不输出标签，请用 type: el 包裹内容」。
 
 | 工厂 | 构造函数 | 成员方法 |
 |------|----------|----------|
-| `h5::text` | `(string $text)` | 无（不输出标签） |
-| `h5::heading` | `(int $level)` | `->text()`，属性组 |
-| `h5::link` | `(string $href)` | `->text()`、`->target()`，属性组 |
-| `h5::if` | `(string $when)` | `->then()`、`->else()` |
-| `h5::each` | `(string $items)` | `->body()`、`->as()`、`->index()` |
-| `h5::form` | `(string $action)` | `->fields()`、`->method()`，属性组 |
-| `h5::input` | `(string $name)` | `->type()`、`->label()`、`->value()`、`->required()`、`->placeholder()` |
-| `h5::textarea` | `(string $name)` | `->label()`、`->value()`、`->required()`、`->rows()` |
-| `h5::select` | `(string $name)` | `->label()`、`->options()`、`->required()` |
-| `h5::table` | `(string $items)` | `->columns()`、`->as()`、`->empty()`，属性组 |
-| `h5::col` | `(string $label)` | `->pop()`、`->content()` |
-| `h5::component` | `(string $name)` | `->data()` |
-| `h5::el` | `(string $tag)` | `->body()`，属性组 |
+| `h5::TEXT` | `(string $text)` | 无（不输出标签） |
+| `h5::HEADING` | `(int $level)` | `->text()`，属性组 |
+| `h5::LINK` | `(string $href)` | `->text()`、`->target()`，属性组 |
+| `h5::IF` | `(string $when)` | `->THEN()`、`->ELSE()` |
+| `h5::EACH` | `(string $items)` | `->body()`、`->as()`、`->index()` |
+| `h5::FORM` | `(string $action)` | `->fields()`、`->method()`，属性组 |
+| `h5::INPUT` | `(string $name)` | `->type()`、`->label()`、`->value()`、`->required()`、`->placeholder()` |
+| `h5::TEXTAREA` | `(string $name)` | `->label()`、`->value()`、`->required()`、`->rows()` |
+| `h5::SELECT` | `(string $name)` | `->label()`、`->options()`、`->required()` |
+| `h5::TABLE` | `(string $items)` | `->columns()`、`->as()`、`->empty()`，属性组 |
+| `h5::COL` | `(string $label)` | `->pop()`、`->content()` |
+| `h5::COMPONENT` | `(string $name)` | `->data()` |
+| `h5::EL` | `(string $tag)` | `->body()`，属性组 |
 
-`h5::input('name')` 默认是文本输入框；`->type()` 取 `<input>` 的 `type` 值：`email`、`password`、`number`、`checkbox`、`hidden`、`submit`。`type` 是 `<input>` 独有的属性，所以它只出现在 `input` 家族上——`textarea` 与 `select` 没有 `->type()` 可写。
+`h5::INPUT('name')` 默认是文本输入框；`->type()` 取 `<input>` 的 `type` 值：`email`、`password`、`number`、`checkbox`、`hidden`、`submit`。`type` 是 `<input>` 独有的属性，所以它只出现在 `input` 家族上——`textarea` 与 `select` 没有 `->type()` 可写。
 
-`level` 默认 1，与 IR 一致：`h5::heading()->text('标题')` 即 h1，`h5::heading(2)->text('标题')` 是 h2。取值 1–6，越界由编译器报错。
+`level` 默认 1，与 IR 一致：`h5::HEADING()->text('标题')` 即 h1，`h5::HEADING(2)->text('标题')` 是 h2。取值 1–6，越界由编译器报错。
 
 ## 四、逐个节点
 
 ### 4.1 text
 
 ```php
-h5::text('你好，{{ user.name }}')
+h5::TEXT('你好，{{ user.name }}')
 ```
 
 裸文本，不输出标签。字面部分原样保留（可以写 HTML），插值自动转义。没有成员方法——需要 `class` 之类的属性时用 `el` 包裹。
@@ -103,8 +105,8 @@ h5::text('你好，{{ user.name }}')
 ### 4.2 heading
 
 ```php
-h5::heading(2)->text('用户列表')                      // <h2>用户列表</h2>
-h5::heading(2)->text('用户列表')->id('usersTitle')->class('page-title')
+h5::HEADING(2)->text('用户列表')                      // <h2>用户列表</h2>
+h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title')
 ```
 
 ```php
@@ -117,8 +119,8 @@ h5::heading(2)->text('用户列表')->id('usersTitle')->class('page-title')
 ### 4.3 link
 
 ```php
-h5::link('/users/{{ user.id }}/edit')->text('编辑')
-h5::link('/users/1')->text('详情')->target('_blank')->class('btn')
+h5::LINK('/users/{{ user.id }}/edit')->text('编辑')
+h5::LINK('/users/1')->text('详情')->target('_blank')->class('btn')
 ```
 
 `href` 与 `->text()` 都支持插值。`target` 不做取值校验——HTML 允许 `_blank` 之外的命名目标。
@@ -126,32 +128,32 @@ h5::link('/users/1')->text('详情')->target('_blank')->class('btn')
 ### 4.4 if
 
 ```php
-h5::if('user.loggedIn')->then([
-    h5::text('欢迎回来，{{ user.name }}'),
+h5::IF('user.loggedIn')->THEN([
+    h5::TEXT('欢迎回来，{{ user.name }}'),
 ])
 ```
 
 ```php
-h5::if('!user.hidden')->then([
-    h5::text('可见内容'),
-])->else([
-    h5::text('已隐藏'),
+h5::IF('!user.hidden')->THEN([
+    h5::TEXT('可见内容'),
+])->ELSE([
+    h5::TEXT('已隐藏'),
 ])
 ```
 
-`when` 是路径，可带 `!` 前缀取反；`!` 只属于 `when`，写在 `each.items` 上是非法路径。不写 `->else()` 即不生成分支，不写 `->then()` 则是编译错误。
+`when` 是路径，可带 `!` 前缀取反；`!` 只属于 `when`，写在 `each.items` 上是非法路径。不写 `->ELSE()` 即不生成分支，不写 `->THEN()` 则是编译错误。
 
 ### 4.5 each
 
 ```php
-h5::each('users')->body([
-    h5::el('li')->body([h5::text('{{ user.name }}')]),
+h5::EACH('users')->body([
+    h5::EL('li')->body([h5::TEXT('{{ user.name }}')]),
 ])
 ```
 
 ```php
-h5::each('users')->body([
-    h5::text('{{ i }}. {{ user.name }}'),
+h5::EACH('users')->body([
+    h5::TEXT('{{ i }}. {{ user.name }}'),
 ])->as('user')->index('i')
 ```
 
@@ -160,33 +162,33 @@ h5::each('users')->body([
 ### 4.6 form 与表单控件
 
 ```php
-h5::form('/users/save')->fields([
-    h5::input('name')->label('姓名')->value('user.name')->required(),
-    h5::input('email')->label('邮箱')->type('email')->placeholder('name@example.com'),
-    h5::select('role')->label('角色')->options(['admin' => '管理员', 'editor' => '编辑']),
-    h5::textarea('bio')->label('简介')->rows(5),
-    h5::input('active')->label('启用')->type('checkbox')->checked('user.active'),
-    h5::input('id')->label('')->type('hidden')->value('user.id'),
-    h5::input('save')->label('保存')->type('submit'),
+h5::FORM('/users/save')->fields([
+    h5::INPUT('name')->label('姓名')->value('user.name')->required(),
+    h5::INPUT('email')->label('邮箱')->type('email')->placeholder('name@example.com'),
+    h5::SELECT('role')->label('角色')->options(['admin' => '管理员', 'editor' => '编辑']),
+    h5::TEXTAREA('bio')->label('简介')->rows(5),
+    h5::INPUT('active')->label('启用')->type('checkbox')->checked('user.active'),
+    h5::INPUT('id')->label('')->type('hidden')->value('user.id'),
+    h5::INPUT('save')->label('保存')->type('submit'),
 ])->method('post')
 ```
 
-写哪种控件就用哪个工厂：`h5::input('email')` 一眼是文本类输入框，`h5::textarea('bio')` 与 `h5::select('role')` 直接就是标签名。三者都是对 IR 里同一个 `input` 字段的写法：
+写哪种控件就用哪个工厂：`h5::INPUT('email')` 一眼是文本类输入框，`h5::TEXTAREA('bio')` 与 `h5::SELECT('role')` 直接就是标签名。三者都是对 IR 里同一个 `input` 字段的写法：
 
 ```php
-h5::input('email')->label('邮箱')->type('email')   // ['type' => 'field', 'input' => 'email', ...]
-h5::textarea('bio')->label('简介')                 // ['type' => 'field', 'input' => 'textarea', ...]
-h5::select('role')->label('角色')                  // ['type' => 'field', 'input' => 'select', ...]
+h5::INPUT('email')->label('邮箱')->type('email')   // ['type' => 'field', 'input' => 'email', ...]
+h5::TEXTAREA('bio')->label('简介')                 // ['type' => 'field', 'input' => 'textarea', ...]
+h5::SELECT('role')->label('角色')                  // ['type' => 'field', 'input' => 'select', ...]
 ```
 
-控件由工厂一次定下，之后没有第二条路径改它：`textarea` 与 `select` 上没有 `->type()`（PHP 层 `call to undefined method`），而 `h5::input('x')->type('email')->type('text')` 抛 `LogicException: 控件重复设置: 已经是 email，不能再设为 text`。
+控件由工厂一次定下，之后没有第二条路径改它：`textarea` 与 `select` 上没有 `->type()`（PHP 层 `call to undefined method`），而 `h5::INPUT('x')->type('email')->type('text')` 抛 `LogicException: 控件重复设置: 已经是 email，不能再设为 text`。
 
 `->required()` 不带参数即为 true，对应 HTML 里布尔属性的写法；不需要时直接不写。`->checked()` 与 `->value()` 收的是路径（`'user.active'`、`'user.name'`），不是字面值。
 
 控件还有一个属性方法 `->bind('user.email')`，产出 `bind="user.email"`——名字交给浏览器端框架，所以值是 JS 变量名/路径，写 `{{ }}` 即编译错误。前后端变量同名时用 shortcut 一次写好两侧：
 
 ```php
-h5::input('email')->label('邮箱')->type('email')->popAndBind('{{ user.email }}')
+h5::INPUT('email')->label('邮箱')->type('email')->popAndBind('{{ user.email }}')
 // 归一为 ['type' => 'field', 'name' => 'email', 'input' => 'email', 'label' => '邮箱',
 //          'value' => '{{ user.email }}', 'bind' => 'user.email']
 // 渲染为 <input type="email" name="email" id="email" value="## $user['email'] ?? '' ##" bind="user.email">
@@ -198,30 +200,30 @@ h5::input('email')->label('邮箱')->type('email')->popAndBind('{{ user.email }}
 
 | 控件 | 可用的成员方法 |
 |------|----------------|
-| `h5::input('name')`、`->type('password' / 'email' / 'number')` | `->value()`、`->required()`、`->placeholder()` |
-| `h5::textarea('bio')` | `->value()`、`->required()`、`->rows()` |
-| `h5::select('role')` | `->options()` 必填（缺即编译错误）；`->required()` 可选；`->value()` 写上即编译错误 |
-| `h5::input('active')->type('checkbox')` | `->required()`、`->checked()` |
-| `h5::input('id')->type('hidden')` | `->value()`；`->required()` 写上即编译错误 |
-| `h5::input('save')->type('submit')` | `->label()` 即按钮文字；`->value()`、`->required()` 写上即编译错误 |
+| `h5::INPUT('name')`、`->type('password' / 'email' / 'number')` | `->value()`、`->required()`、`->placeholder()` |
+| `h5::TEXTAREA('bio')` | `->value()`、`->required()`、`->rows()` |
+| `h5::SELECT('role')` | `->options()` 必填（缺即编译错误）；`->required()` 可选；`->value()` 写上即编译错误 |
+| `h5::INPUT('active')->type('checkbox')` | `->required()`、`->checked()` |
+| `h5::INPUT('id')->type('hidden')` | `->value()`；`->required()` 写上即编译错误 |
+| `h5::INPUT('save')->type('submit')` | `->label()` 即按钮文字；`->value()`、`->required()` 写上即编译错误 |
 
 `name`、`label`、`options` 的键值、`column.label`、`table.empty` 都是字面量字段，写 `{{ }}` 即编译错误。
 
 ### 4.7 table 与 column
 
 ```php
-h5::table('users')->columns([
-    h5::col('ID')->pop('{{ row.id }}'),
-    h5::col('姓名')->pop('{{ row.name }}'),
-    h5::col('操作')->content([
-        h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+h5::TABLE('users')->columns([
+    h5::COL('ID')->pop('{{ row.id }}'),
+    h5::COL('姓名')->pop('{{ row.name }}'),
+    h5::COL('操作')->content([
+        h5::LINK('/users/{{ row.id }}/edit')->text('编辑'),
     ]),
 ])->empty('暂无数据')
 ```
 
 ```php
-h5::table('users')->columns([
-    h5::col('姓名')->pop('{{ row.name }}'),
+h5::TABLE('users')->columns([
+    h5::COL('姓名')->pop('{{ row.name }}'),
 ])->as('row')
 ```
 
@@ -230,7 +232,7 @@ h5::table('users')->columns([
 ### 4.8 component
 
 ```php
-h5::component('card')->data([
+h5::COMPONENT('card')->data([
     'title' => '{{ user.name }}',
     'body' => '简介',
 ])
@@ -241,17 +243,17 @@ h5::component('card')->data([
 ### 4.9 el
 
 ```php
-h5::el('div')->class('card')->body([h5::text('正文')])
+h5::EL('div')->class('card')->body([h5::TEXT('正文')])
 ```
 
 ```php
-h5::el('div')->attr('x-data', '{ open: false }')->class('card')->body([
-    h5::heading(3)->text('卡片'),
+h5::EL('div')->attr('x-data', '{ open: false }')->class('card')->body([
+    h5::HEADING(3)->text('卡片'),
 ])
 ```
 
 ```php
-h5::el('button')->on('click', 'open = !open')->body([h5::text('切换')])
+h5::EL('button')->on('click', 'open = !open')->body([h5::TEXT('切换')])
 ```
 
 `tag` 必须是合法的小写 HTML 标签名。不写 `->body()` 即空 body，输出 `<div></div>`（保留属性）；但把 body 写成 `null`、字符串或单个节点映射都是编译错误，不会被当成空 body。
@@ -273,7 +275,7 @@ h5::el('button')->on('click', 'open = !open')->body([h5::text('切换')])
 
 ## 五、数据绑定、转义与错误
 
-**`pop`、`bind`、`popAndBind` 分属两侧。** 本模块要说「PHP 把数据渲染进页面」时一律用 `pop`（populate 的缩写），它收一个数据引用，编译成 `## $user['name'] ?? '' ##`，渲染时求值——`->value()`、`h5::col()->pop()` 都是这一侧。`bind` 则是浏览器端那一半：只产出一个属性 `bind="user.email"`，名字交给前端框架去解析，本模块不求值，所以值必须是 JS 变量名/路径，写 `{{ }}` 即编译错误。`popAndBind('{{ user.email }}')` 是两者的 shortcut，只在前后端变量同名时用；不一致就分开写。
+**`pop`、`bind`、`popAndBind` 分属两侧。** 本模块要说「PHP 把数据渲染进页面」时一律用 `pop`（populate 的缩写），它收一个数据引用，编译成 `## $user['name'] ?? '' ##`，渲染时求值——`->value()`、`h5::COL()->pop()` 都是这一侧。`bind` 则是浏览器端那一半：只产出一个属性 `bind="user.email"`，名字交给前端框架去解析，本模块不求值，所以值必须是 JS 变量名/路径，写 `{{ }}` 即编译错误。`popAndBind('{{ user.email }}')` 是两者的 shortcut，只在前后端变量同名时用；不一致就分开写。
 
 同一个「数据引用」在两侧的不同拼写也是刻意的：`pop` 收 `{{ user.name }}`（页面层插值，走校验与转义），`bind` 收 `user.name`（浏览器端名字，原样输出）。
 
@@ -319,17 +321,17 @@ $page = [
     'layout' => 'layout/admin',
     'sections' => [
         'content' => [
-            h5::heading(2)->text('用户列表'),
-            h5::if('users')->then([
-                h5::table('users')->columns([
-                    h5::col('ID')->pop('{{ row.id }}'),
-                    h5::col('姓名')->pop('{{ row.name }}'),
-                    h5::col('操作')->content([
-                        h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+            h5::HEADING(2)->text('用户列表'),
+            h5::IF('users')->THEN([
+                h5::TABLE('users')->columns([
+                    h5::COL('ID')->pop('{{ row.id }}'),
+                    h5::COL('姓名')->pop('{{ row.name }}'),
+                    h5::COL('操作')->content([
+                        h5::LINK('/users/{{ row.id }}/edit')->text('编辑'),
                     ]),
                 ])->empty('暂无数据'),
-            ])->else([
-                h5::text('还没有用户'),
+            ])->ELSE([
+                h5::TEXT('还没有用户'),
             ]),
         ],
     ],
@@ -345,12 +347,12 @@ $page = [
     'layout' => 'layout/admin',
     'sections' => [
         'content' => [
-            h5::heading(2)->text('编辑用户'),
-            h5::form('/users/{{ user.id }}/save')->fields([
-                h5::input('name')->label('姓名')->value('user.name')->required(),
-                h5::input('email')->label('邮箱')->type('email')->value('user.email')->required(),
-                h5::select('role')->label('角色')->options(['admin' => '管理员', 'editor' => '编辑']),
-                h5::input('save')->label('保存')->type('submit'),
+            h5::HEADING(2)->text('编辑用户'),
+            h5::FORM('/users/{{ user.id }}/save')->fields([
+                h5::INPUT('name')->label('姓名')->value('user.name')->required(),
+                h5::INPUT('email')->label('邮箱')->type('email')->value('user.email')->required(),
+                h5::SELECT('role')->label('角色')->options(['admin' => '管理员', 'editor' => '编辑']),
+                h5::INPUT('save')->label('保存')->type('submit'),
             ])->method('post'),
         ],
     ],
@@ -371,12 +373,12 @@ $renderer->clearCache();   // 清掉本渲染器写出的派生页面，返回�
 
 ## 八、设计说明
 
-**调用点读起来像一段 HTML。** `h5::heading(2)->text('用户列表')->id('usersTitle')->class('page-title')` 与 `<h2 id="usersTitle" class="page-title">用户列表</h2>` 是同一件事的两种拼写。工厂名给出标签，成员方法按 HTML 属性名补齐；`input`、`textarea`、`select`、`table`、`col` 本身就是标签名，而 `<input>` 的 type 值仍写在 `->type()` 上，所以 `email`、`checkbox`、`hidden`、`submit` 这些不是元素的东西不会被误当成元素。
+**调用点读起来像一段 HTML。** `h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title')` 与 `<h2 id="usersTitle" class="page-title">用户列表</h2>` 是同一件事的两种拼写。工厂名给出标签，成员方法按 HTML 属性名补齐；`input`、`textarea`、`select`、`table`、`col` 本身就是标签名，而 `<input>` 的 type 值仍写在 `->type()` 上，所以 `email`、`checkbox`、`hidden`、`submit` 这些不是元素的东西不会被误当成元素。
 
-**构造函数只有一个参数。** 它是「离开它这个节点就不成立」的值；字段再多也走方法链，因此不存在「第九个位置参数是什么」这类问题。`h5::input('email')->label('邮箱')->type('email')->required()` 里没有一个位置参数需要记忆。
+**构造函数只有一个参数。** 它是「离开它这个节点就不成立」的值；字段再多也走方法链，因此不存在「第九个位置参数是什么」这类问题。`h5::INPUT('email')->label('邮箱')->type('email')->required()` 里没有一个位置参数需要记忆。
 
-**同形参数靠方法名分辨。** `if` 的 `->then()` 与 `->else()`、`el` 的 `->body()` 与属性方法、`each` 的 `->body()` 与 `->as()`——每一项都自带名字，不必回查签名。
+**同形参数靠方法名分辨。** `IF` 的 `->THEN()` 与 `->ELSE()`、`EL` 的 `->body()` 与属性方法、`EACH` 的 `->body()` 与 `->as()`——每一项都自带名字，不必回查签名。
 
-**方法集合本身是文档。** 不输出标签的节点没有属性方法，所以 `h5::text('x')->class('a')` 在 PHP 层就是 `undefined method`；`h5::textarea('bio')->type('email')` 同样在 PHP 层报错，因为控件方法只长在 `h5::input` 上。顺着 IDE 的补全列表就能把一个节点的全部可写字段看一遍。
+**方法集合本身是文档。** 不输出标签的节点没有属性方法，所以 `h5::TEXT('x')->class('a')` 在 PHP 层就是 `undefined method`；`h5::TEXTAREA('bio')->type('email')` 同样在 PHP 层报错，因为控件方法只长在 `h5::INPUT` 上。顺着 IDE 的补全列表就能把一个节点的全部可写字段看一遍。
 
-**校验仍然只有一处。** 工厂不检查节点词表：未知属性、越界的 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器抛带路径的 `CompileException`——数组、XML、YAML 与 h5 四个入口的错误措辞因此完全一致。代价是 `compile()` 入口多了一层把 `Node` 递归归一为数组的处理，方法名与参数名成为公开 API（重命名即破坏性变更），实现上也比纯函数集合多出几个类；这些取舍记录在 `spec.md` 第 10 节。
+**校验仍然只有一处。** 工厂不检查节点词表：未知属性、越界的 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器抛带路径的 `CompileException`——数组、XML、YAML 与 h5 四个入口的错误措辞因此完全一致。代价是 `compile()` 入口多了一层把 `Node` 递归归一为数组的处理，方法名与参数名成为公开 API（重命名即破坏性变更），实现上也比纯函数集合多出几个类；另外全大写方法名偏离了 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。这些取舍记录在 `spec.md` 第 10 节。

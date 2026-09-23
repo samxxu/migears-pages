@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-Declarative page definitions for PHP, compiled to miGears Template files (`.tpl.php`). Pages are written with the `Html` factory (`h5::heading(2)->text('用户列表')`), which normalizes to a plain array model — the very same model `migears/xml-pages` and `migears/yaml-pages` parse their own formats into. The whole node vocabulary, validation and interpolation live here, once, shared by all four entry points.
+Declarative page definitions for PHP, compiled to miGears Template files (`.tpl.php`). Pages are written with the `Html` factory (`h5::HEADING(2)->text('用户列表')`), which normalizes to a plain array model — the very same model `migears/xml-pages` and `migears/yaml-pages` parse their own formats into. The whole node vocabulary, validation and interpolation live here, once, shared by all four entry points.
 
 ## Features
 
@@ -48,10 +48,10 @@ $tpl = $compiler->compile([
     'layout' => 'layout/main',
     'sections' => [
         'content' => [
-            h5::heading(2)->text('用户列表'),
-            h5::table('users')->columns([
-                h5::col('ID')->pop('{{ row.id }}'),
-                h5::col('姓名')->pop('{{ row.name }}'),
+            h5::HEADING(2)->text('用户列表'),
+            h5::TABLE('users')->columns([
+                h5::COL('ID')->pop('{{ row.id }}'),
+                h5::COL('姓名')->pop('{{ row.name }}'),
             ])->empty('暂无数据'),
         ],
     ],
@@ -85,7 +85,7 @@ The cache directory is content-addressed and only ever added to: a changed decla
 
 ## Page Syntax
 
-One factory per node, named after the HTML it emits; every other field is a method named after its HTML counterpart.
+One factory per node, named after the HTML it emits and spelled in caps; every other field is a lowercase method named after its HTML counterpart. `->THEN()` and `->ELSE()` are the two exceptions, since they name statements rather than attributes. A node therefore never looks like a field: `h5::INPUT('email')->label('邮箱')` reads as a tag with its attributes. PHP method names ignore case, so the lowercase spelling still runs — `tests/FactoryNamingTest.php` is what keeps the convention honest across the package's own docs, spec, examples and sources.
 
 ```php
 use MiGears\Pages\Html as h5;
@@ -93,16 +93,16 @@ use MiGears\Pages\Html as h5;
 $page = [
     'layout' => 'layout/admin',
     'sections' => ['content' => [
-        h5::heading(2)->text('用户列表')->id('usersTitle'),
-        h5::if('users')->then([
-            h5::table('users')->columns([
-                h5::col('姓名')->pop('{{ row.name }}'),
-                h5::col('操作')->content([
-                    h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+        h5::HEADING(2)->text('用户列表')->id('usersTitle'),
+        h5::IF('users')->THEN([
+            h5::TABLE('users')->columns([
+                h5::COL('姓名')->pop('{{ row.name }}'),
+                h5::COL('操作')->content([
+                    h5::LINK('/users/{{ row.id }}/edit')->text('编辑'),
                 ]),
             ])->empty('暂无数据'),
-        ])->else([
-            h5::text('还没有用户'),
+        ])->ELSE([
+            h5::TEXT('还没有用户'),
         ]),
     ]],
 ];
@@ -110,21 +110,21 @@ $page = [
 
 | Factory | Argument | Node |
 |---------|----------|------|
-| `h5::text` | `text` | `text` |
-| `h5::heading` | `level` (default 1) | `heading` |
-| `h5::link` | `href` | `link` |
-| `h5::if` | `when` | `if` |
-| `h5::each` | `items` | `each` |
-| `h5::form` | `action` | `form` |
-| `h5::input` | `name` | `field`, input `text` |
-| `h5::textarea` | `name` | `field`, input `textarea` |
-| `h5::select` | `name` | `field`, input `select` |
-| `h5::table` | `items` | `table` |
-| `h5::col` | `label` | `column` |
-| `h5::component` | `name` | `component` |
-| `h5::el` | `tag` | `el` |
+| `h5::TEXT` | `text` | `text` |
+| `h5::HEADING` | `level` (default 1) | `heading` |
+| `h5::LINK` | `href` | `link` |
+| `h5::IF` | `when` | `if` |
+| `h5::EACH` | `items` | `each` |
+| `h5::FORM` | `action` | `form` |
+| `h5::INPUT` | `name` | `field`, input `text` |
+| `h5::TEXTAREA` | `name` | `field`, input `textarea` |
+| `h5::SELECT` | `name` | `field`, input `select` |
+| `h5::TABLE` | `items` | `table` |
+| `h5::COL` | `label` | `column` |
+| `h5::COMPONENT` | `name` | `component` |
+| `h5::EL` | `tag` | `el` |
 
-Attribute methods exist only on the nodes that emit a tag — `heading`, `link`, `form`, `table`, `el`: `class`, `id`, `style`, `attr(name, value)`, `on(event, expression)` for `@event`, and `bind(name)` for the front-end framework's own binding. On the others those calls are an `undefined method` in PHP rather than a late compile error. `type()` exists only on `h5::input`, since `type` is an attribute of `<input>` alone; `h5::select()` and `h5::textarea()` fix their control in the factory. Field methods follow the same shape — `label`, `value`, `required`, `placeholder`, `options`, `checked`, `rows` — and the compiler still checks each one against the control it is used on.
+Attribute methods exist only on the nodes that emit a tag — `HEADING`, `LINK`, `FORM`, `TABLE`, `EL`: `class`, `id`, `style`, `attr(name, value)`, `on(event, expression)` for `@event`, and `bind(name)` for the front-end framework's own binding. On the others those calls are an `undefined method` in PHP rather than a late compile error. `type()` exists only on `h5::INPUT`, since `type` is an attribute of `<input>` alone; `h5::SELECT()` and `h5::TEXTAREA()` fix their control in the factory. Field methods follow the same shape — `label`, `value`, `required`, `placeholder`, `options`, `checked`, `rows` — and the compiler still checks each one against the control it is used on.
 
 What the factories return is sugar. `Compiler::compile()` normalizes the nodes to the array model documented in the next section, which is also what the XML and YAML frontends parse into: one vocabulary, one set of checks, one wording per error. Setting the same field twice throws instead of overwriting, for the same reason the compiler never drops a written value. `docs/h5-syntax.md` walks through the whole syntax node by node.
 
@@ -148,7 +148,7 @@ The page is a PHP array. The root has the fields `title` / `layout` / `body` / `
 | `el` | `tag` required (lowercase), `body` optional, any forwarded attribute |
 | `component` | `name` required, `data` optional (values support `{{ path }}`) |
 
-`field` inputs: `text` (default), `password`, `email`, `number`, `textarea`, `select`, `checkbox`, `hidden`, `submit`. `select` fields take an `options` mapping and reject `value`; `checkbox` takes `checked` (bound path); `textarea` takes `rows` (default 4). A field's `id` defaults to its `name` (and the label's `for` follows it); an explicit `id` overrides it. `pop` is the server side — short for *populate*, PHP handing data to the page — and `bind` names the browser side, the front-end variable the framework binds to. `h5::popAndBind()` writes both halves in one call when the two names agree. `column` needs `label` and exactly one of `pop` (a data reference, written `{{ row.name }}` — the leading variable is checked against the table's `as`) or `content` (node tree in row scope).
+`field` inputs: `text` (default), `password`, `email`, `number`, `textarea`, `select`, `checkbox`, `hidden`, `submit`. `select` fields take an `options` mapping and reject `value`; `checkbox` takes `checked` (bound path); `textarea` takes `rows` (default 4). A field's `id` defaults to its `name` (and the label's `for` follows it); an explicit `id` overrides it. `pop` is the server side — short for *populate*, PHP handing data to the page — and `bind` names the browser side, the front-end variable the framework binds to. `->popAndBind()` writes both halves in one call when the two names agree. `column` needs `label` and exactly one of `pop` (a data reference, written `{{ row.name }}` — the leading variable is checked against the table's `as`) or `content` (node tree in row scope).
 
 `{{ path }}` interpolates a dot path into an auto-escaped output (`{{ user.name }}` → `## $user['name'] ?? '' ##`). Only `a.b.c` paths are allowed — no function calls, no arithmetic. Literal fields — `layout`, section names, `form.method`, `field.name`, `field.label`, `option` value and text, `table.empty`, `column.label`, `component.name` — are emitted as-is; `{{ }}` there is a compile error.
 
@@ -210,7 +210,7 @@ $tpl->addPath(__DIR__ . '/views/components');
 $renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
 echo $renderer->render([
     'body' => [
-        h5::component('my-card')->data([
+        h5::COMPONENT('my-card')->data([
             'title' => '{{ user.name }}',
             'body' => 'body 由组件决定是否转义',
         ]),
@@ -231,7 +231,7 @@ How `Template::findTemplate()` resolves the name:
 Two limits worth designing around:
 
 - **Isolated scope.** A component is evaluated with its `data` map only — the page's other variables are not passed down, so everything it needs has to be handed over explicitly.
-- **String values only.** `data` values are validated at compile time and must be strings, and `h5::component()` emits no tag of its own, so it has no attribute methods: wrap it in `h5::el()` when the wrapper needs `class` / `id` / `x-*`. Values arrive **unescaped**, so the component template chooses between `$this->e()` and `$this->raw()`.
+- **String values only.** `data` values are validated at compile time and must be strings, and `h5::COMPONENT()` emits no tag of its own, so it has no attribute methods: wrap it in `h5::EL()` when the wrapper needs `class` / `id` / `x-*`. Values arrive **unescaped**, so the component template chooses between `$this->e()` and `$this->raw()`.
 
 ## Errors
 
@@ -261,7 +261,7 @@ MIT
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-面向 PHP 的声明式页面定义，编译为 miGears 模板文件（`.tpl.php`）。页面用 `Html` 工厂书写（`h5::heading(2)->text('用户列表')`），它归一为一个纯数组模型——`migears/xml-pages` 与 `migears/yaml-pages` 也正是把自己的格式解析成这个模型。整套节点词表、校验与插值逻辑只在这一个包里实现一份，四个入口共同使用。
+面向 PHP 的声明式页面定义，编译为 miGears 模板文件（`.tpl.php`）。页面用 `Html` 工厂书写（`h5::HEADING(2)->text('用户列表')`），它归一为一个纯数组模型——`migears/xml-pages` 与 `migears/yaml-pages` 也正是把自己的格式解析成这个模型。整套节点词表、校验与插值逻辑只在这一个包里实现一份，四个入口共同使用。
 
 ## 特性
 
@@ -307,10 +307,10 @@ $tpl = $compiler->compile([
     'layout' => 'layout/main',
     'sections' => [
         'content' => [
-            h5::heading(2)->text('用户列表'),
-            h5::table('users')->columns([
-                h5::col('ID')->pop('{{ row.id }}'),
-                h5::col('姓名')->pop('{{ row.name }}'),
+            h5::HEADING(2)->text('用户列表'),
+            h5::TABLE('users')->columns([
+                h5::COL('ID')->pop('{{ row.id }}'),
+                h5::COL('姓名')->pop('{{ row.name }}'),
             ])->empty('暂无数据'),
         ],
     ],
@@ -344,7 +344,7 @@ echo $renderer->render($page, ['users' => [...]]);
 
 ## 页面语法
 
-一个节点一个工厂，工厂名与它输出的 HTML 对齐；其余字段一律是成员方法，方法名同样对齐 HTML。
+一个节点一个工厂，工厂名与它输出的 HTML 对齐，且一律全大写；其余字段都是小写成员方法，方法名同样对齐 HTML。`->THEN()` 与 `->ELSE()` 是仅有的两个例外，因为它们命名的是语句而不是属性。所以节点绝不会长得像字段：`h5::INPUT('email')->label('邮箱')` 读起来就是「标签加它的属性」。PHP 的方法名不区分大小写，小写写法照样能跑，真正把这条约定钉住的是 `tests/FactoryNamingTest.php`，它扫本包自己的文档、规格、示例与源码。
 
 ```php
 use MiGears\Pages\Html as h5;
@@ -352,16 +352,16 @@ use MiGears\Pages\Html as h5;
 $page = [
     'layout' => 'layout/admin',
     'sections' => ['content' => [
-        h5::heading(2)->text('用户列表')->id('usersTitle'),
-        h5::if('users')->then([
-            h5::table('users')->columns([
-                h5::col('姓名')->pop('{{ row.name }}'),
-                h5::col('操作')->content([
-                    h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+        h5::HEADING(2)->text('用户列表')->id('usersTitle'),
+        h5::IF('users')->THEN([
+            h5::TABLE('users')->columns([
+                h5::COL('姓名')->pop('{{ row.name }}'),
+                h5::COL('操作')->content([
+                    h5::LINK('/users/{{ row.id }}/edit')->text('编辑'),
                 ]),
             ])->empty('暂无数据'),
-        ])->else([
-            h5::text('还没有用户'),
+        ])->ELSE([
+            h5::TEXT('还没有用户'),
         ]),
     ]],
 ];
@@ -369,21 +369,21 @@ $page = [
 
 | 工厂 | 参数 | 节点 |
 |------|------|------|
-| `h5::text` | `text` | `text` |
-| `h5::heading` | `level`（默认 1） | `heading` |
-| `h5::link` | `href` | `link` |
-| `h5::if` | `when` | `if` |
-| `h5::each` | `items` | `each` |
-| `h5::form` | `action` | `form` |
-| `h5::input` | `name` | `field`，input 为 `text` |
-| `h5::textarea` | `name` | `field`，input 为 `textarea` |
-| `h5::select` | `name` | `field`，input 为 `select` |
-| `h5::table` | `items` | `table` |
-| `h5::col` | `label` | `column` |
-| `h5::component` | `name` | `component` |
-| `h5::el` | `tag` | `el` |
+| `h5::TEXT` | `text` | `text` |
+| `h5::HEADING` | `level`（默认 1） | `heading` |
+| `h5::LINK` | `href` | `link` |
+| `h5::IF` | `when` | `if` |
+| `h5::EACH` | `items` | `each` |
+| `h5::FORM` | `action` | `form` |
+| `h5::INPUT` | `name` | `field`，input 为 `text` |
+| `h5::TEXTAREA` | `name` | `field`，input 为 `textarea` |
+| `h5::SELECT` | `name` | `field`，input 为 `select` |
+| `h5::TABLE` | `items` | `table` |
+| `h5::COL` | `label` | `column` |
+| `h5::COMPONENT` | `name` | `component` |
+| `h5::EL` | `tag` | `el` |
 
-属性方法只长在输出标签的节点上——`heading`、`link`、`form`、`table`、`el`：`class`、`id`、`style`、`attr(name, value)`、输出 `@event` 的 `on(event, expression)`，以及 `bind(name)`（前端框架自己的绑定）。在其它节点上这些调用是 PHP 层的 `undefined method`，不会拖到编译期才报。`type()` 只长在 `h5::input` 上，因为 `type` 是 `<input>` 独有的属性；`h5::select()` 与 `h5::textarea()` 的控件由工厂一次定下。字段方法同理——`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`——而它们用在哪种控件上仍由编译器校验。
+属性方法只长在输出标签的节点上——`HEADING`、`LINK`、`FORM`、`TABLE`、`EL`：`class`、`id`、`style`、`attr(name, value)`、输出 `@event` 的 `on(event, expression)`，以及 `bind(name)`（前端框架自己的绑定）。在其它节点上这些调用是 PHP 层的 `undefined method`，不会拖到编译期才报。`type()` 只长在 `h5::INPUT` 上，因为 `type` 是 `<input>` 独有的属性；`h5::SELECT()` 与 `h5::TEXTAREA()` 的控件由工厂一次定下。字段方法同理——`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`——而它们用在哪种控件上仍由编译器校验。
 
 工厂返回的只是糖：`Compiler::compile()` 在入口把节点归一成下一节记录的数组模型，也就是两个前端包解析出的模型——词表一份、校验一份、每个错误只有一种措辞。同一个字段写两次立即抛异常而不是覆盖，理由与编译器不静默丢弃任何写入的值相同。逐个节点的完整写法与设计取舍见 `docs/h5-syntax.md`。
 
@@ -407,7 +407,7 @@ $page = [
 | `el` | `tag` 必填（小写）、`body` 可选、任意透传属性 |
 | `component` | `name` 必填、`data` 可选（值支持 `{{ path }}`） |
 
-`field` 的 input：`text`（默认）、`password`、`email`、`number`、`textarea`、`select`、`checkbox`、`hidden`、`submit`。`select` 字段带 `options` 映射且不接受 `value`；`checkbox` 带 `checked`（绑定路径）；`textarea` 带 `rows`（默认 4）。字段的 `id` 默认等于 `name`（`label` 的 `for` 随之），显式 `id` 覆盖它。`pop` 是服务端那一侧（populate 的缩写，PHP 把数据渲染进页面），`bind` 是浏览器端那一侧，指名前端框架要绑定的变量；两侧同名时用 `h5::popAndBind()` 一次写好。`column` 需要 `label`，且 `pop`（数据引用，写成 `{{ row.name }}`，首段会与该表格的 `as` 校验）与 `content`（行变量作用域内的节点树）二选一。
+`field` 的 input：`text`（默认）、`password`、`email`、`number`、`textarea`、`select`、`checkbox`、`hidden`、`submit`。`select` 字段带 `options` 映射且不接受 `value`；`checkbox` 带 `checked`（绑定路径）；`textarea` 带 `rows`（默认 4）。字段的 `id` 默认等于 `name`（`label` 的 `for` 随之），显式 `id` 覆盖它。`pop` 是服务端那一侧（populate 的缩写，PHP 把数据渲染进页面），`bind` 是浏览器端那一侧，指名前端框架要绑定的变量；两侧同名时用 `->popAndBind()` 一次写好。`column` 需要 `label`，且 `pop`（数据引用，写成 `{{ row.name }}`，首段会与该表格的 `as` 校验）与 `content`（行变量作用域内的节点树）二选一。
 
 `{{ path }}` 把点路径插值为自动转义输出（`{{ user.name }}` → `## $user['name'] ?? '' ##`）。只支持 `a.b.c` 路径——函数调用、算术一律不允许。字面量字段——`layout`、section 名、`form.method`、`field.name`、`field.label`、`option` 的 value 与显示文本、`table.empty`、`column.label`、`component.name`——原样输出；在其中写 `{{ }}` 属编译错误。
 
@@ -469,7 +469,7 @@ $tpl->addPath(__DIR__ . '/views/components');
 $renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
 echo $renderer->render([
     'body' => [
-        h5::component('my-card')->data([
+        h5::COMPONENT('my-card')->data([
             'title' => '{{ user.name }}',
             'body' => 'body 由组件决定是否转义',
         ]),
@@ -490,7 +490,7 @@ echo $renderer->render([
 设计组件前值得知道的两个限制：
 
 - **作用域隔离。** 组件只用它的 `data` 求值，页面的其它变量不会透传下来，需要什么就得显式传进去。
-- **只能传字符串。** `data` 的值在编译期校验，必须是字符串；且 `h5::component()` 自身不输出标签，所以没有属性方法，需要外层属性时用 `h5::el()` 包裹。值以**未转义**形式送达，转义与否由组件模板在 `$this->e()` 与 `$this->raw()` 之间决定。
+- **只能传字符串。** `data` 的值在编译期校验，必须是字符串；且 `h5::COMPONENT()` 自身不输出标签，所以没有属性方法，需要外层属性时用 `h5::EL()` 包裹。值以**未转义**形式送达，转义与否由组件模板在 `$this->e()` 与 `$this->raw()` 之间决定。
 
 ## 错误处理
 
