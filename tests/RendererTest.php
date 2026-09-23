@@ -33,6 +33,30 @@ class RendererTest extends TestCase
         rmdir($this->cacheDir);
     }
 
+    public function testTemplateMarkersInPageTextRenderLiterally(): void
+    {
+        // Pages own {{ }}; a "##" in page text is escaped for the template layer, so it
+        // reaches the browser as written instead of being evaluated as an expression.
+        $renderer = new Renderer(
+            new Template(__DIR__ . '/fixtures/views'),
+            new Compiler(),
+            $this->cacheDir
+        );
+
+        $html = $renderer->render([
+            'body' => [
+                ['type' => 'text', 'text' => '## 说明 ##'],
+                ['type' => 'text', 'text' => '### $user["name"] ###'],
+                ['type' => 'text', 'text' => '你好，{{ user.name }}'],
+            ],
+        ], ['user' => ['name' => '<b>Alice</b>']]);
+
+        self::assertStringContainsString('## 说明 ##', $html);
+        self::assertStringContainsString('### $user["name"] ###', $html);
+        self::assertStringContainsString('你好，&lt;b&gt;Alice&lt;/b&gt;', $html);
+        self::assertStringNotContainsString('<b>Alice</b>', $html);
+    }
+
     public function testRendersBodyPage(): void
     {
         $renderer = new Renderer(
@@ -65,8 +89,8 @@ class RendererTest extends TestCase
             'sections' => [
                 'content' => [
                     ['type' => 'table', 'items' => 'users', 'as' => 'user', 'columns' => [
-                        ['label' => 'ID', 'bind' => 'id'],
-                        ['label' => '姓名', 'bind' => 'name'],
+                        ['label' => 'ID', 'pop' => '{{ user.id }}'],
+                        ['label' => '姓名', 'pop' => '{{ user.name }}'],
                     ]],
                 ],
             ],

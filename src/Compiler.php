@@ -66,9 +66,16 @@ class Compiler
      */
     private const PASSTHROUGH_PREFIXES = ['x-', 'v-', 'hx-', 'data-'];
 
-    private const PASSTHROUGH_EXACT = ['class', 'id', 'style'];
+    private const PASSTHROUGH_EXACT = ['class', 'id', 'style', 'bind'];
 
     private const TAG_PATTERN = '/^[a-z][a-z0-9-]*$/';
+
+    /**
+     * A bind value is a browser-side name, not a server-side path: it names the
+     * JavaScript variable (or path) the framework binds to. Validated so a
+     * server path or an interpolation cannot be written there by mistake.
+     */
+    private const BIND_PATTERN = '/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[\d+\])*$/';
 
     /**
      * Alpine spells these directives with a colon. The hyphen form is not an
@@ -95,11 +102,36 @@ class Compiler
     /**
      * Compile a page declaration — the array form of the DSL — to template source.
      *
+     * Node objects built with the Html factory are accepted anywhere a node is expected
+     * and normalized into the array model first, so every entry point hands the compiler
+     * the same thing: arrays.
+     *
      * @param array<string, mixed> $page
      */
     public function compile(array $page): string
     {
-        return $this->compilePage($page);
+        return $this->compilePage($this->normalize($page));
+    }
+
+    /**
+     * Replace Node objects with the arrays they stand for, recursively.
+     *
+     * @param array<string, mixed> $value
+     *
+     * @return array<string, mixed>
+     */
+    private function normalize(array $value): array
+    {
+        $out = [];
+        foreach ($value as $key => $item) {
+            $out[$key] = match (true) {
+                $item instanceof Node => $this->normalize($item->toArray()),
+                is_array($item) => $this->normalize($item),
+                default => $item,
+            };
+        }
+
+        return $out;
     }
 
     /**
@@ -306,6 +338,10 @@ class Compiler
 
             $target = $candidate['explicit'] ? $name : $this->mapAttributeName($name, $path);
 
+            if ($target === 'bind') {
+                $this->assertBindName($candidate['value'], $path);
+            }
+
             if (isset($emitted[$target])) {
                 $this->error($candidate['explicit']
                     ? "{$path}: " . $this->explicitAttrRef($target) . ' 与已有的同名属性重复'
@@ -322,6 +358,18 @@ class Compiler
         }
 
         return $out;
+    }
+
+    /** A bind value names a JavaScript variable/path; anything else is a mistake. */
+    private function assertBindName(mixed $value, string $path): void
+    {
+        if (is_string($value) && (str_contains($value, '{{') || str_contains($value, '}}'))) {
+            $this->error("{$path}: bind 是浏览器端变量名，不支持 {{ }} 插值；服务端渲染请用 value / pop");
+        }
+        if (! is_string($value) || ! preg_match(self::BIND_PATTERN, $value)) {
+            $this->error("{$path}: bind 的值必须是 JS 变量名或路径（如 user.email），收到 "
+                . (is_string($value) ? "\"{$value}\"" : gettype($value)));
+        }
     }
 
     private function renderAttr(string $name, string $value, array $n, string $path, bool $emitsTag): string
@@ -576,9 +624,16 @@ class Compiler
         $this->requireStructuralType($n, 'field', $path);
         $name = $this->literal($this->requireString($n, 'name', $path), $path, 'name');
         $label = $this->literal($this->requireString($n, 'label', $path), $path, 'label');
+        // The label's `for` and the control's `id` are the same identity — and it
+        // defaults to the field name, which is what keeps HTML hooks and the DTO
+        // key aligned. An explicit id overrides it instead of being emitted a
+        // second time.
+        $id = array_key_exists('id', $n)
+            ? $this->literal($this->requireString($n, 'id', $path), $path, 'id')
+            : $name;
         $extra = $this->forwardedAttrs(
             $n,
-            ['name', 'label', 'input', 'value', 'required', 'placeholder', 'checked', 'rows', 'options'],
+            ['name', 'label', 'input', 'value', 'required', 'placeholder', 'checked', 'rows', 'options', 'id'],
             $path,
             true
         );
@@ -612,18 +667,20 @@ class Compiler
         }
 
         if ($input === 'submit') {
-            return '  <input type="submit" value="' . $label . '"' . $extra . '>';
+            return '  <input type="submit" value="' . $label . '"'
+                . (array_key_exists('id', $n) ? ' id="' . $id . '"' : '')
+                . $extra . '>';
         }
 
         $out = '';
         if ($input !== 'hidden') {
-            $out .= '  <label for="' . $name . '">' . $label . "</label>\n";
+            $out .= '  <label for="' . $id . '">' . $label . "</label>\n";
         }
 
-        $value = $this->bindValue(array_key_exists('value', $n) ? $this->requireString($n, 'value', $path) : null, $path);
+        $value = $this->resolveValue(array_key_exists('value', $n) ? $this->requireString($n, 'value', $path) : null, $path);
 
         if (in_array($input, ['text', 'password', 'email', 'number'], true)) {
-            $out .= '  <input type="' . $input . '" name="' . $name . '" id="' . $name . '"';
+            $out .= '  <input type="' . $input . '" name="' . $name . '" id="' . $id . '"';
             if ($value !== '') {
                 $out .= ' value="' . $value . '"';
             }
@@ -639,7 +696,8 @@ class Compiler
         }
 
         if ($input === 'hidden') {
-            $out .= '  <input type="hidden" name="' . $name . '"';
+            $out .= '  <input type="hidden" name="' . $name . '"'
+                . (array_key_exists('id', $n) ? ' id="' . $id . '"' : '');
             if ($value !== '') {
                 $out .= ' value="' . $value . '"';
             }
@@ -654,7 +712,7 @@ class Compiler
             }
             $content = $value !== '' ? $value : '';
 
-            return $out . '  <textarea name="' . $name . '" id="' . $name . '" rows="' . $rows . '"'
+            return $out . '  <textarea name="' . $name . '" id="' . $id . '" rows="' . $rows . '"'
                 . ($required ? ' required' : '') . $extra . '>' . $content . '</textarea>';
         }
 
@@ -663,7 +721,7 @@ class Compiler
             if (! is_array($options)) {
                 $this->error("{$path}: select 字段缺少 options 映射");
             }
-            $out .= '  <select name="' . $name . '" id="' . $name . '"'
+            $out .= '  <select name="' . $name . '" id="' . $id . '"'
                 . ($required ? ' required' : '') . $extra . '>';
             foreach ($options as $optValue => $optLabel) {
                 $optValue = $this->literal((string) $optValue, $path, 'option value');
@@ -680,7 +738,7 @@ class Compiler
         }
 
         // checkbox
-        $out .= '  <input type="checkbox" name="' . $name . '" id="' . $name . '"';
+        $out .= '  <input type="checkbox" name="' . $name . '" id="' . $id . '"';
         if ($required) {
             $out .= ' required';
         }
@@ -718,21 +776,24 @@ class Compiler
             }
             $this->requireStructuralType($column, 'column', $columnPath);
             $label = $this->literal($this->requireString($column, 'label', $columnPath), $columnPath, 'label');
-            $columnAttr = $this->forwardedAttrs($column, ['label', 'bind', 'content'], $columnPath, true);
             $head .= '<th>' . $label . '</th>';
+            $columnAttr = $this->forwardedAttrs($column, ['label', 'pop', 'content'], $columnPath, true);
 
-            $hasBind = array_key_exists('bind', $column);
+            $hasPop = array_key_exists('pop', $column);
             $hasContent = array_key_exists('content', $column);
-            if ($hasBind && $hasContent) {
-                $this->error($columnPath . ': 列同时指定 bind 与 content');
-            }
-            if (! $hasBind && ! $hasContent) {
-                $this->error($columnPath . ': 列缺少 bind 或 content');
+
+            if ($hasPop && $hasContent) {
+                $this->error($columnPath . ': 列同时指定 pop 与 content');
             }
 
-            if ($hasBind) {
-                $bind = $this->requireString($column, 'bind', $columnPath);
-                $rows[] = '<td' . $columnAttr . '>' . $this->bindValue($as . '.' . $bind, $columnPath) . '</td>';
+            if (! $hasPop && ! $hasContent) {
+                $this->error($columnPath . ': 列缺少 pop 或 content');
+            }
+
+            if ($hasPop) {
+                $reference = $this->requireString($column, 'pop', $columnPath);
+                $rows[] = '<td' . $columnAttr . '>'
+                    . $this->resolveValue($this->rowReference($reference, $as, $columnPath), $columnPath) . '</td>';
             } else {
                 $content = $this->requireList($column['content'], $columnPath . '.content', '节点树数组');
                 $rows[] = '<td' . $columnAttr . '>' . $this->compileNodes($content, $columnPath . '.content') . '</td>';
@@ -813,6 +874,7 @@ class Compiler
      */
     private function interpolate(string $text, string $path): string
     {
+        $text = $this->escapeTemplateMarker($text);
         $this->assertInterpolationBalanced($text, $path);
 
         return preg_replace_callback(
@@ -844,7 +906,9 @@ class Compiler
         foreach ($parts as $i => $part) {
             if ($i % 2 === 0) {
                 if ($part !== '') {
-                    $exprs[] = "'" . addcslashes($part, "\\'") . "'";
+                    // Escape after the PHP-string escaping: the marker pass in
+                    // migears/template removes exactly the backslashes added here.
+                    $exprs[] = "'" . $this->escapeTemplateMarker(addcslashes($part, "\\'")) . "'";
                 }
             } else {
                 $php = $this->compilePath(trim($part), $path);
@@ -882,14 +946,57 @@ class Compiler
         return $php;
     }
 
-    /** Compile a bound path into escaped attribute sugar: ## $user['name'] ?? '' ##. */
-    private function bindValue(?string $path, string $where): string
+    /** Compile a data reference into escaped attribute sugar: ## $user['name'] ?? '' ##. */
+    private function resolveValue(?string $reference, string $where): string
     {
-        if ($path === null) {
+        if ($reference === null) {
             return '';
         }
 
-        return '## ' . $this->compilePath($path, $where) . " ?? '' ##";
+        return '## ' . $this->compilePath($this->stripBraces($reference, $where, 'value'), $where) . " ?? '' ##";
+    }
+
+    /**
+     * A pop reference names the row-scoped data to render, written as {{ row.name }}.
+     *
+     * The braces mark it as data — the same marker pages use for interpolation, so
+     * "data is rendered here" reads the same in both places — and the leading
+     * variable must be the table's own row variable. Without it, 'name' would
+     * silently mean row['name'], and 'user.name' would silently mean
+     * row['user']['name'] instead of the page-level user.
+     */
+    private function rowReference(string $reference, string $row, string $where): string
+    {
+        $trimmed = trim($reference);
+        if (! preg_match('/^\{\{\s*(.+?)\s*\}\}$/', $trimmed, $m)) {
+            $this->error("{$where}.pop: 请写成 {{ {$row}." . (trim($trimmed) === '' ? '字段' : trim($trimmed))
+                . " }} 形式；数据引用统一用 {{ }} 标记");
+        }
+
+        $path = trim($m[1]);
+        if (explode('.', $path)[0] !== $row) {
+            $this->error("{$where}.pop: 必须引用行变量 \"{$row}\"，收到 \"{$reference}\"");
+        }
+
+        return $path;
+    }
+
+    /**
+     * Accept a data reference with or without the {{ }} marker; the marker is the
+     * recommended spelling (it makes data visible in the source), the bare path is
+     * kept for the fields that predate it.
+     */
+    private function stripBraces(string $reference, string $where, string $field): string
+    {
+        $trimmed = trim($reference);
+        if (preg_match('/^\{\{\s*(.+?)\s*\}\}$/', $trimmed, $m)) {
+            return trim($m[1]);
+        }
+        if (str_contains($trimmed, '{{') || str_contains($trimmed, '}}')) {
+            $this->error("{$where}: {$field} 的插值符号未配对，请写 {{ path }}");
+        }
+
+        return $trimmed;
     }
 
     private function assertInterpolationBalanced(string $text, string $path): void
@@ -1013,7 +1120,34 @@ class Compiler
             $this->error("{$path}: \"{$field}\" 是字面量字段，不支持 {{ }} 插值");
         }
 
+        $this->assertNoTemplateMarker($value, $path, "\"{$field}\"");
+
         return $value;
+    }
+
+    /**
+     * The page source is compiled to .tpl.php sugar, and that output is scanned again
+     * by migears/template — a text-level pass with no notion of PHP context. Literal
+     * fields are emitted verbatim (attributes, tags, names), so a "##" there would be
+     * read back as template interpolation. They are literals, not text: reject instead
+     * of guessing. Text, attribute values and component values go through the
+     * interpolation helpers, which escape the marker instead (see escapeTemplateMarker).
+     */
+    private function assertNoTemplateMarker(string $text, string $path, string $where): void
+    {
+        if (str_contains($text, '##')) {
+            $this->error("{$path}: {$where}是字面量，不允许出现 \"##\"（模板层语法）");
+        }
+    }
+
+    /**
+     * Prefix the template layer's escape to every run of two or more hashes, so a page
+     * can carry literal "##" text: {{ }} stays the only interpolation marker in pages,
+     * and the compiled output renders the hashes as written.
+     */
+    private function escapeTemplateMarker(string $text): string
+    {
+        return preg_replace('/#{2,}/', '\\\\$0', $text) ?? $text;
     }
 
     /** Escape a value for a PHP single-quoted string. */

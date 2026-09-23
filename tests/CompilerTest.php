@@ -195,13 +195,13 @@ final class CompilerTest extends TestCase
         );
     }
 
-    public function testTableColumnsBindAndContent(): void
+    public function testTableColumnsPopAndContent(): void
     {
         $out = $this->compile(['body' => [[
             'type' => 'table',
             'items' => 'users',
             'columns' => [
-                ['label' => 'ID', 'bind' => 'id'],
+                ['label' => 'ID', 'pop' => '{{ row.id }}'],
                 ['label' => '操作', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => '改']]],
             ],
         ]]]);
@@ -218,23 +218,71 @@ final class CompilerTest extends TestCase
             'type' => 'table',
             'items' => 'users',
             'empty' => '暂无数据',
-            'columns' => [['label' => 'ID', 'bind' => 'id']],
+            'columns' => [['label' => 'ID', 'pop' => '{{ row.id }}']],
         ]]]);
 
         $this->assertStringContainsString('if (($users ?? []) === [])', $out);
         $this->assertStringContainsString('<td colspan="1">暂无数据</td>', $out);
     }
 
-    public function testColumnNeedsExactlyOneOfBindOrContent(): void
+    public function testColumnNeedsExactlyOneOfPopOrContent(): void
     {
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A']]]]],
-            '列缺少 bind 或 content'
+            '列缺少 pop 或 content'
         );
         $this->expectError(
-            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'bind' => 'a', 'content' => []]]]]],
-            '列同时指定 bind 与 content'
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}', 'content' => []]]]]],
+            '列同时指定 pop 与 content'
         );
+    }
+
+    public function testPopReferenceMustNameTheRowVariableInBraces(): void
+    {
+        // A bare path would silently mean "relative to the row" — and 'user.name'
+        // would mean row['user']['name'] instead of the page-level user.
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => 'a']]]]],
+            '请写成 {{ row.a }} 形式'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => '{{ user.name }}']]]]],
+            '必须引用行变量 "row"'
+        );
+    }
+
+    public function testBindTakesABrowserSideNameOnly(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'el', 'tag' => 'div', 'bind' => '{{ user.name }}', 'body' => []]]],
+            'bind 是浏览器端变量名，不支持 {{ }} 插值'
+        );
+    }
+
+    public function testBindIsEmittedForEveryTagAndField(): void
+    {
+        $out = $this->compile(['body' => [
+            ['type' => 'el', 'tag' => 'span', 'bind' => 'user.email', 'body' => []],
+            ['type' => 'form', 'action' => '/s', 'fields' => [
+                ['name' => 'email', 'input' => 'text', 'label' => '邮箱', 'bind' => 'form.email'],
+            ]],
+        ]]);
+
+        self::assertStringContainsString('<span bind="user.email">', $out);
+        self::assertStringContainsString('name="email" id="email" bind="form.email"', $out);
+    }
+
+    public function testExplicitIdOverridesTheFieldNameInsteadOfDuplicatingIt(): void
+    {
+        // id defaults to name (which keeps HTML hooks and the DTO key aligned), but an
+        // explicit id has to override it — not be emitted a second time.
+        $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+            ['name' => 'email', 'input' => 'text', 'label' => '邮箱', 'id' => 'userEmail'],
+        ]]]]);
+
+        self::assertStringContainsString('<label for="userEmail">', $out);
+        self::assertStringContainsString('name="email" id="userEmail"', $out);
+        self::assertSame(1, substr_count($out, 'id="userEmail"'));
     }
 
     public function testColumnContentMustBeNodeTree(): void
@@ -439,7 +487,7 @@ final class CompilerTest extends TestCase
     public function testLiteralFieldsRejectInterpolation(): void
     {
         $this->expectError(
-            ['body' => [['type' => 'table', 'items' => 'u', 'empty' => '{{ a }}', 'columns' => [['label' => 'A', 'bind' => 'a']]]]],
+            ['body' => [['type' => 'table', 'items' => 'u', 'empty' => '{{ a }}', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}']]]]],
             '不支持 {{ }} 插值'
         );
     }
@@ -690,6 +738,36 @@ final class CompilerTest extends TestCase
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'bind' => 'id', 'type' => 'field']]]]],
             'type 必须是 "column"'
+        );
+    }
+
+    public function testTemplateMarkersInPageTextAreEscaped(): void
+    {
+        // Page text, attribute values and component values are escaped for the template
+        // layer, so a literal "##" survives compilation as text instead of being read
+        // back as a template expression (which would bypass path validation entirely).
+        $compiler = new Compiler();
+
+        $cases = [
+            'text' => ['body' => [['type' => 'text', 'text' => '## 说明 ##']]],
+            'attribute value' => ['body' => [['type' => 'el', 'tag' => 'div', 'class' => 'a-## b', 'body' => []]]],
+            'component value' => ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['title' => '## x ##']]]],
+        ];
+
+        foreach ($cases as $name => $page) {
+            self::assertStringContainsString('\##', $compiler->compile($page), "[{$name}] 未按模板层语法转义");
+        }
+
+        // A single hash needs no escape and stays untouched.
+        self::assertStringContainsString('# 一级标题', $compiler->compile(['body' => [['type' => 'text', 'text' => '# 一级标题']]]));
+    }
+
+    public function testLiteralFieldsRejectTemplateMarkers(): void
+    {
+        // Literal fields are emitted verbatim, so there is nothing to escape: reject.
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/x', 'fields' => [['name' => 'a', 'input' => 'text', 'label' => '## 姓名 ##']]]]],
+            '是字面量，不允许出现 "##"'
         );
     }
 
