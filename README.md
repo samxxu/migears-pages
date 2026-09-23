@@ -169,7 +169,7 @@ The full node grammar, interpolation rules and error catalogue are specified in 
 - `migears/yaml-pages` — `.page.yaml` declarations, parsed with PECL `ext-yaml`
 - `migears/xml-pages` — `.page.xml` declarations, parsed with SimpleXML
 
-Both compile through this package, so behaviour is identical: same node vocabulary, same validation, same output. Their CLI binaries (`bin/yaml-pages`, `bin/xml-pages`) compile files and directories; this package has no CLI of its own because the array DSL has no source-file form — call `compile()` directly.
+Both compile through this package, so behaviour is identical: same node vocabulary, same validation, same output. Their CLI binaries (`bin/yaml-pages`, `bin/xml-pages`) compile files and directories; this package has no CLI of its own because the array DSL has no source-file form — call `compile()` directly. The `Compiler` still exposes file-level entry points — `compileSource()`, `compileFile()` and `compileToFile()` — for those frontends to reuse; the base class has no source syntax of its own, so array-DSL users simply call `compile()`.
 
 ## Custom Components
 
@@ -428,7 +428,7 @@ $page = [
 - `migears/yaml-pages` —— `.page.yaml` 声明，用 PECL `ext-yaml` 解析
 - `migears/xml-pages` —— `.page.xml` 声明，用 SimpleXML 解析
 
-两者都经由本包编译，行为完全一致：同一套节点词汇、同一套校验、同一份产物。它们的 CLI 二进制（`bin/yaml-pages`、`bin/xml-pages`）负责编译文件与目录；本包没有 CLI——数组 DSL 没有源文件形态，直接调用 `compile()` 即可。
+两者都经由本包编译，行为完全一致：同一套节点词汇、同一套校验、同一份产物。它们的 CLI 二进制（`bin/yaml-pages`、`bin/xml-pages`）负责编译文件与目录；本包没有 CLI——数组 DSL 没有源文件形态，直接调用 `compile()` 即可。`Compiler` 仍暴露文件级入口——`compileSource()`、`compileFile()` 与 `compileToFile()`——供上述前端包复用；基类本身没有自有源码语法，因此数组 DSL 用户直接调用 `compile()` 即可。
 
 ## 自定义组件
 
