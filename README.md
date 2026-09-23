@@ -4,6 +4,10 @@
 
 Declarative page definitions for PHP, compiled to miGears Template files (`.tpl.php`). Pages are written with the `Html` factory (`h5::HEADING(2)->text('用户列表')`), which normalizes to a plain array model — the very same model `migears/xml-pages` and `migears/yaml-pages` parse their own formats into. The whole node vocabulary, validation and interpolation live here, once, shared by all four entry points.
 
+> **Background**: miGears is the open-source successor of **TinyGears**, a
+> self-developed PHP framework. It was renamed and open-sourced recently because
+> the name *TinyGears* is already taken in the open-source community.
+
 ## Features
 
 - PHP 8.1+, PSR-4 autoloading, namespace `MiGears\Pages`
