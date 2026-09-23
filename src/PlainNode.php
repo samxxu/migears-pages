@@ -8,7 +8,7 @@ namespace MiGears\Pages;
  * A node that emits no tag of its own: text, if, each, component, and the two
  * structural types (field, column).
  *
- * No attribute methods here on purpose — `h5::text('x')->class('a')` is an undefined
+ * No attribute methods here on purpose — `h5::TEXT('x')->class('a')` is an undefined
  * method in PHP, not a compile error discovered later.
  */
 final class PlainNode extends Node

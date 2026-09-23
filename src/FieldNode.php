@@ -19,7 +19,7 @@ class FieldNode extends TagNode
      * variable share a name.
      *
      * ```php
-     * h5::input('email')->popAndBind('{{ user.email }}');
+     * h5::INPUT('email')->popAndBind('{{ user.email }}');
      * // value="## $user['email'] ?? '' ##" bind="user.email"
      * ```
      *

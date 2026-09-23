@@ -20,7 +20,9 @@ namespace MiGears\Pages;
  *   `href`, `target`, `method`, `value`, `placeholder`, `checked`, `rows`, `required`,
  *   `class`, `id`, `style`);
  * - fields with no HTML counterpart keep a name that matches the component (`body`,
- *   `then`, `else`, `as`, `index`, `columns`, `empty`, `pop`, `content`, `data`);
+ *   `as`, `index`, `columns`, `empty`, `pop`, `content`, `data`);
+ * - the two control-flow branches are spelled like the nodes they hang off (`THEN`,
+ *   `ELSE`) instead of like attributes, because they name statements, not attributes;
  * - `pop` is the server-side half (PHP renders data into the page) while `bind` is the
  *   browser-side half (the framework's binding attribute); `popAndBind` is the two
  *   combined for the common case where both sides use the same name.
@@ -81,12 +83,14 @@ abstract class Node
         return $this->fill('target', $target);
     }
 
-    final public function then(array $nodes): static
+    /** Uppercase because it names the statement, not an attribute. */
+    final public function THEN(array $nodes): static
     {
         return $this->fill('then', $nodes);
     }
 
-    final public function else(array $nodes): static
+    /** Uppercase because it names the statement, not an attribute. */
+    final public function ELSE(array $nodes): static
     {
         return $this->fill('else', $nodes);
     }

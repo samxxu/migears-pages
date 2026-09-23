@@ -6,7 +6,7 @@ namespace MiGears\Pages;
 
 /**
  * An <input> field. `type` is an attribute of <input> alone, so type() lives here and
- * not on the nodes built by h5::textarea() / h5::select() — those have no such method.
+ * not on the nodes built by h5::TEXTAREA() / h5::SELECT() — those have no such method.
  *
  * The type defaults to text and may be set once.
  */
