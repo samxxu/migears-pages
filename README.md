@@ -85,7 +85,7 @@ The cache directory is content-addressed and only ever added to: a changed decla
 
 ## Page Syntax
 
-One factory per node, named after the HTML it emits and spelled in caps; every other field is a lowercase method named after its HTML counterpart. `->THEN()` and `->ELSE()` are the two exceptions, since they name statements rather than attributes. A node therefore never looks like a field: `h5::INPUT('email')->label('邮箱')` reads as a tag with its attributes. PHP method names ignore case, so the lowercase spelling still runs — `tests/FactoryNamingTest.php` is what keeps the convention honest across the package's own docs, spec, examples and sources.
+One factory per node, named after the HTML it emits and spelled in caps; every other field is a lowercase method named after its HTML counterpart. Two exceptions, both deliberate: `->THEN()` and `->ELSE()` name statements rather than attributes, and the two iteration factories take their loop header as optional arguments — `h5::EACH('users', as: 'user', index: 'i')`, `h5::TABLE('users', as: 'user')` — mirroring `foreach` and keeping the header in one place. A node therefore never looks like a field: `h5::INPUT('email')->label('邮箱')` reads as a tag with its attributes. PHP method names ignore case, so the lowercase spelling still runs — `tests/FactoryNamingTest.php` keeps the convention honest across the package's own docs, spec, examples and sources.
 
 ```php
 use MiGears\Pages\Html as h5;
@@ -114,12 +114,12 @@ $page = [
 | `h5::HEADING` | `level` (default 1) | `heading` |
 | `h5::LINK` | `href` | `link` |
 | `h5::IF` | `when` | `if` |
-| `h5::EACH` | `items` | `each` |
+| `h5::EACH` | `items`, optional `as` / `index` | `each` |
 | `h5::FORM` | `action` | `form` |
 | `h5::INPUT` | `name` | `field`, input `text` |
 | `h5::TEXTAREA` | `name` | `field`, input `textarea` |
 | `h5::SELECT` | `name` | `field`, input `select` |
-| `h5::TABLE` | `items` | `table` |
+| `h5::TABLE` | `items`, optional `as` | `table` |
 | `h5::COL` | `label` | `column` |
 | `h5::COMPONENT` | `name` | `component` |
 | `h5::EL` | `tag` | `el` |
@@ -344,7 +344,7 @@ echo $renderer->render($page, ['users' => [...]]);
 
 ## 页面语法
 
-一个节点一个工厂，工厂名与它输出的 HTML 对齐，且一律全大写；其余字段都是小写成员方法，方法名同样对齐 HTML。`->THEN()` 与 `->ELSE()` 是仅有的两个例外，因为它们命名的是语句而不是属性。所以节点绝不会长得像字段：`h5::INPUT('email')->label('邮箱')` 读起来就是「标签加它的属性」。PHP 的方法名不区分大小写，小写写法照样能跑，真正把这条约定钉住的是 `tests/FactoryNamingTest.php`，它扫本包自己的文档、规格、示例与源码。
+一个节点一个工厂，工厂名与它输出的 HTML 对齐，且一律全大写；其余字段都是小写成员方法，方法名同样对齐 HTML。两处例外都是刻意的：`->THEN()` 与 `->ELSE()` 命名的是语句而不是属性；迭代类工厂把循环头做成可选参数（`h5::EACH('users', as: 'user', index: 'i')`、`h5::TABLE('users', as: 'user')`），对应 `foreach` 的头部，省掉两次链式调用。所以节点绝不会长得像字段：`h5::INPUT('email')->label('邮箱')` 读起来就是「标签加它的属性」。PHP 的方法名不区分大小写，小写写法照样能跑，真正把这条约定钉住的是 `tests/FactoryNamingTest.php`，它扫本包自己的文档、规格、示例与源码。
 
 ```php
 use MiGears\Pages\Html as h5;
@@ -373,12 +373,12 @@ $page = [
 | `h5::HEADING` | `level`（默认 1） | `heading` |
 | `h5::LINK` | `href` | `link` |
 | `h5::IF` | `when` | `if` |
-| `h5::EACH` | `items` | `each` |
+| `h5::EACH` | `items`、可选 `as` / `index` | `each` |
 | `h5::FORM` | `action` | `form` |
 | `h5::INPUT` | `name` | `field`，input 为 `text` |
 | `h5::TEXTAREA` | `name` | `field`，input 为 `textarea` |
 | `h5::SELECT` | `name` | `field`，input 为 `select` |
-| `h5::TABLE` | `items` | `table` |
+| `h5::TABLE` | `items`、可选 `as` | `table` |
 | `h5::COL` | `label` | `column` |
 | `h5::COMPONENT` | `name` | `component` |
 | `h5::EL` | `tag` | `el` |

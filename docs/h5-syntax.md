@@ -60,13 +60,13 @@ h5::EACH('users')->body([
 
 别名由调用方决定，`h5` 只是本文的选择——写成 `use MiGears\Pages\Html as h;` 后，`h::TEXTAREA('bio')` 同样成立。
 
-## 三、四条规则
+## 三、五条规则
 
 **工厂名全大写，成员方法小写。** 节点叫 `h5::TEXTAREA`、`h5::IF`，字段叫 `->label()`、`->pop()`：大写是节点，小写是字段，`h5::INPUT('email')->label('邮箱')` 一眼就是「标签加属性」，与 HTML 自己的观感一致。两个控制流分支跟着节点走，写成 `->THEN()`、`->ELSE()`，因为它们命名的是语句而不是属性。需要注意 PHP 的方法名不区分大小写，把工厂名写成小写拼写照样能跑，语言层面拦不住，所以这条约定由 `tests/FactoryNamingTest.php` 守着——它检查 `Html` 声明的方法名，并扫本包自己的文档、规格、示例与源码。单个提到标签名时按 HTML 习惯写小写（`textarea`、`select`），只有工厂调用处的名字全大写。
 
 **工厂名与 HTML 元素对齐。** `INPUT`、`TEXTAREA`、`SELECT`、`TABLE`、`COL`、`FORM`、`EL` 就是标签名；`HEADING` 对应 `<h1>`–`<h6>`，`LINK` 对应 `<a>`。不输出标签的四个用控制流与组件的语义命名：`TEXT`、`IF`、`EACH`、`COMPONENT`。表单控件不再有笼统的 `field` 工厂，写哪种控件就用哪个工厂。
 
-**构造函数只收「离开它这个节点就不成立」的那个值。** 标题的级别、元素的标签名、循环的数据源、表单的提交地址、链接的目标地址、组件的名字、控件的字段名、列的标题——各一个参数。字段再多也不进构造函数。
+**构造函数收「离开它这个节点就不成立」的那个值。** 标题的级别、元素的标签名、循环的数据源、表单的提交地址、链接的目标地址、组件的名字、控件的字段名、列的标题——各一个参数。块（`->body()`、`->THEN()`、`->fields()`）与 HTML 属性都是方法，签名永远不需要数参数。唯一的例外是迭代类节点 `EACH` 与 `TABLE`：它们额外收可选的**循环头**（`EACH` 收 `as` / `index`，`TABLE` 收 `as`），把 `foreach ($users as $i => $user)` 头部那几个名字放在一处，详见 4.5 与 4.7。
 
 **其余一切都是成员方法，方法名尽量与 HTML 同名。** 是 HTML 属性的就用属性名（`->type()`、`->href()`、`->target()`、`->method()`、`->value()`、`->placeholder()`、`->checked()`、`->rows()`、`->required()`、`->class()`、`->id()`、`->style()`），是 HTML 元素的就用元素名，没有对应标签的用一个贴合组件语义的名字（`->label()`、`->options()`、`->body()`、`->as()`、`->index()`、`->columns()`、`->empty()`、`->pop()`、`->bind()`、`->popAndBind()`、`->content()`、`->data()`）；只有 `->THEN()`、`->ELSE()` 按语句而不是属性命名。
 
@@ -78,12 +78,12 @@ h5::EACH('users')->body([
 | `h5::HEADING` | `(int $level)` | `->text()`，属性组 |
 | `h5::LINK` | `(string $href)` | `->text()`、`->target()`，属性组 |
 | `h5::IF` | `(string $when)` | `->THEN()`、`->ELSE()` |
-| `h5::EACH` | `(string $items)` | `->body()`、`->as()`、`->index()` |
+| `h5::EACH` | `(string $items, ?string $as, ?string $index)` | `->body()`、`->as()`、`->index()` |
 | `h5::FORM` | `(string $action)` | `->fields()`、`->method()`，属性组 |
 | `h5::INPUT` | `(string $name)` | `->type()`、`->label()`、`->value()`、`->required()`、`->placeholder()` |
 | `h5::TEXTAREA` | `(string $name)` | `->label()`、`->value()`、`->required()`、`->rows()` |
 | `h5::SELECT` | `(string $name)` | `->label()`、`->options()`、`->required()` |
-| `h5::TABLE` | `(string $items)` | `->columns()`、`->as()`、`->empty()`，属性组 |
+| `h5::TABLE` | `(string $items, ?string $as)` | `->columns()`、`->as()`、`->empty()`，属性组 |
 | `h5::COL` | `(string $label)` | `->pop()`、`->content()` |
 | `h5::COMPONENT` | `(string $name)` | `->data()` |
 | `h5::EL` | `(string $tag)` | `->body()`，属性组 |
@@ -145,19 +145,39 @@ h5::IF('!user.hidden')->THEN([
 
 ### 4.5 each
 
+循环头一次写完，循环体交给 `->body()`：
+
+```php
+h5::EACH('users', as: 'user', index: 'i')->body([
+    h5::TEXT('{{ i }}. {{ user.name }}'),
+])
+```
+
+两个头参数都可省略，省略时不写该字段、由编译器补自己的默认值：
+
 ```php
 h5::EACH('users')->body([
-    h5::EL('li')->body([h5::TEXT('{{ user.name }}')]),
+    h5::EL('li')->body([h5::TEXT('{{ item.name }}')]),
 ])
 ```
 
 ```php
-h5::EACH('users')->body([
-    h5::TEXT('{{ i }}. {{ user.name }}'),
-])->as('user')->index('i')
+h5::EACH('users', as: 'user')->body([
+    h5::TEXT('{{ user.name }}'),
+])
 ```
 
-`as` 默认 `item`（不写 `->as()` 时循环变量就是 `item`），`->index()` 省略则不引入下标变量；两者都必须是合法 PHP 变量名。`items` 编译为 `foreach ($users ?? [])`，未定义的数据自然渲染为空而不是报错。嵌套 `each` 时内层同名 `as` 按 PHP 语义遮蔽。
+`items` 编译为 `foreach ($users ?? [])`，未定义的数据自然渲染为空而不是报错。`as` 是行变量，省略时编译器用默认的 `item`；`index` 是下标变量，省略就**不引入**下标变量（不是默认绑一个 `i`——那样嵌套循环会互抢同一个名字，内层静默遮蔽外层）。两者都必须是合法 PHP 变量名。
+
+循环头也可以写成 `->as()` / `->index()`，与命名参数等价：
+
+```php
+h5::EACH('users')->as('user')->index('i')->body([...])
+```
+
+省略的头参数不会被写进节点，所以两种写法可以互换；同一个字段两处都写会按「不静默覆盖」抛 `LogicException: 字段重复设置: as`。命名参数必须带冒号，且只能写在位置参数之后：`h5::EACH('users', index: 'i')` 合法（`as` 用默认值），`h5::EACH('users', index: 'i', 'user')` 是语法错误。
+
+`EACH` 是迭代节点，它的构造函数签名多两个可选参数，这一点见第三节的例外说明。
 
 ### 4.6 form 与表单控件
 
@@ -222,12 +242,12 @@ h5::TABLE('users')->columns([
 ```
 
 ```php
-h5::TABLE('users')->columns([
-    h5::COL('姓名')->pop('{{ row.name }}'),
-])->as('row')
+h5::TABLE('users', as: 'user')->columns([
+    h5::COL('姓名')->pop('{{ user.name }}'),
+])
 ```
 
-`col` 与 `<col>` 同名，读起来就是表格列。`as` 默认 `row`；`->empty()` 是空数据时那一行的文字（字面量），不写则不生成空态行。每列的 `->pop()`（服务端要渲染进单元格的数据引用，写成 `'{{ row.name }}'`）与 `->content()`（节点树，行变量作用域内）二选一必填，同时写即编译错误。`pop` 的值必须带 `{{ }}`，且首段要等于该表格的 `as` 变量——写裸路径 `'row.name'` 或引用别的变量，都是编译错误。
+`TABLE` 与 `EACH` 同属迭代节点，行变量同样可以在构造函数里一次给出（`->as('user')` 等价）。`col` 与 `<col>` 同名，读起来就是表格列。`as` 默认 `row`；`->empty()` 是空数据时那一行的文字（字面量），不写则不生成空态行。每列的 `->pop()`（服务端要渲染进单元格的数据引用，写成 `'{{ user.name }}'`）与 `->content()`（节点树，行变量作用域内）二选一必填，同时写即编译错误。`pop` 的值必须带 `{{ }}`，且首段要等于该表格的 `as` 变量——写裸路径 `'row.name'` 或引用别的变量，都是编译错误。
 
 ### 4.8 component
 
@@ -375,7 +395,7 @@ $renderer->clearCache();   // 清掉本渲染器写出的派生页面，返回�
 
 **调用点读起来像一段 HTML。** `h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title')` 与 `<h2 id="usersTitle" class="page-title">用户列表</h2>` 是同一件事的两种拼写。工厂名给出标签，成员方法按 HTML 属性名补齐；`input`、`textarea`、`select`、`table`、`col` 本身就是标签名，而 `<input>` 的 type 值仍写在 `->type()` 上，所以 `email`、`checkbox`、`hidden`、`submit` 这些不是元素的东西不会被误当成元素。
 
-**构造函数只有一个参数。** 它是「离开它这个节点就不成立」的值；字段再多也走方法链，因此不存在「第九个位置参数是什么」这类问题。`h5::INPUT('email')->label('邮箱')->type('email')->required()` 里没有一个位置参数需要记忆。
+**构造函数只有一个参数，迭代节点多两个可选的。** 那个参数是「离开它这个节点就不成立」的值；字段再多也走方法链，因此不存在「第九个位置参数是什么」这类问题。`h5::INPUT('email')->label('邮箱')->type('email')->required()` 里没有一个位置参数需要记忆。`EACH` 与 `TABLE` 是例外，因为 `foreach ($users as $i => $user)` 的头部本来就是一个整体，把它拆成两次链式调用反而更难读；那两个参数都排在必填项之后，调用时要么用命名参数（`as: 'user'`、`index: 'i'`），要么一个不写。
 
 **同形参数靠方法名分辨。** `IF` 的 `->THEN()` 与 `->ELSE()`、`EL` 的 `->body()` 与属性方法、`EACH` 的 `->body()` 与 `->as()`——每一项都自带名字，不必回查签名。
 

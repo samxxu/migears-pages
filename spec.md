@@ -388,7 +388,7 @@ h5::FORM('/users/save')->fields([h5::INPUT('email')->label('邮箱')->type('emai
 
 **工厂只命名字段，不校验。** 未知属性、越界 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器在编译期抛带路径的 `CompileException`；本层不复制校验规则，也不更改错误措辞。
 
-工厂各收一个参数，即「离开它这个节点就不成立」的值：
+工厂收「离开它这个节点就不成立」的那个值；迭代节点 `EACH` 与 `TABLE` 额外收可选的循环头，其余工厂一律只收一个参数：
 
 | 工厂 | 参数 | 归一后的节点 |
 |------|------|--------------|
@@ -396,15 +396,17 @@ h5::FORM('/users/save')->fields([h5::INPUT('email')->label('邮箱')->type('emai
 | `h5::HEADING` | `level`（默认 1） | `type: heading` |
 | `h5::LINK` | `href` | `type: link` |
 | `h5::IF` | `when` | `type: if` |
-| `h5::EACH` | `items` | `type: each` |
+| `h5::EACH` | `items`、`as`、`index`（后两个可选） | `type: each` |
 | `h5::FORM` | `action` | `type: form` |
 | `h5::INPUT` | `name` | `type: field` + `input: text` |
 | `h5::TEXTAREA` | `name` | `type: field` + `input: textarea` |
 | `h5::SELECT` | `name` | `type: field` + `input: select` |
-| `h5::TABLE` | `items` | `type: table` |
+| `h5::TABLE` | `items`、`as`（可选） | `type: table` |
 | `h5::COL` | `label` | `type: column` |
 | `h5::COMPONENT` | `name` | `type: component` |
 | `h5::EL` | `tag` | `type: el` |
+
+**循环头作为可选参数。** 签名是 `EACH(string $items, ?string $as = null, ?string $index = null)` 与 `TABLE(string $items, ?string $as = null)`：必填项在前，头参数在后且可省略，所以既可以用命名参数（`EACH('users', as: 'user', index: 'i')`，PHP 8 的名字参数，参数名因此是公开 API），也可以只写 `EACH('users')`。省略时不写入对应字段，由编译器补 §6 的默认值（`as` 为 `item` / `row`，`index` 则是不引入下标变量——**不默认绑 `$i`**，否则嵌套循环会互抢同名变量、内层静默遮蔽外层）；显式给出即写入该字段，之后再调 `->as()` / `->index()` 会按重复设置抛 `\LogicException`。`Node::as()` / `Node::index()` 保留，与命名参数等价。“其余工厂只收一个参数”由 `HtmlTest::testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument()` 用反射守住，避免这个例外悄悄扩散。
 
 成员方法按归属分三组：
 
@@ -489,7 +491,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 文本 | text 纯文本 / 单插值 / 多插值 / 多行 |
 | 结构 | heading 各级、越界 level 报错；link href/text 插值 |
 | 条件 | if then / then+else / `!` 取反 / when 缺失报错 |
-| 循环 | each 基础 / index / 嵌套 / items 缺失报错 |
+| 循环 | each 基础 / index / 嵌套 / items 缺失报错 / 循环头写成命名参数或方法（等价）/ 省略头参数不写字段 / 同一字段两处都写抛重复设置 / 签名反射守卫 |
 | 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 / required 非布尔 / option 文本非字符串 / placeholder、checked、rows、value、required 越界报错 / required 在 select、textarea、checkbox 上输出 |
 | 表格 | pop 列（`{{ row.x }}`）/ content 列 / empty / as 默认与自定义 / 行变量校验（裸路径、别的变量报错）/ pop+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
 | bind | 任意标签与字段可输出 `bind="js.name"`；值含 `{{ }}` 或不是 JS 名字时报错；`popAndBind` 同时写出 value 与 bind（含 `x-model` 拼写） |
