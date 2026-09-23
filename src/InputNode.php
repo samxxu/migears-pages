@@ -25,7 +25,7 @@ final class InputNode extends FieldNode
     public function type(string $control): static
     {
         if ($this->controlSet) {
-            throw new \LogicException('控件重复设置: 已经是 ' . $this->current('input') . '，不能再设为 ' . $control);
+            throw new \LogicException('control already set: ' . $this->current('input'));
         }
 
         $this->controlSet = true;

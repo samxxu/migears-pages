@@ -1,3 +1,531 @@
+# migears/pages Module Specification
+
+Version: 2.0.0 (draft, pending review)
+Date: 2026-09-21
+
+## 1. Positioning
+
+`pages` is the declarative page compilation layer of the miGears framework: it treats the **PHP array** as the single source of truth for the DSL and compiles a page declaration into a `migears/template` template file (`.tpl.php` syntax). It is not a core component and carries no runtime responsibility; it only does the compile-time "declaration → template" translation.
+
+Together with `migears/xml-pages` and `migears/yaml-pages`, it forms a **compiler + syntax-frontend** relationship: the two frontends only parse their own format and produce the same array model (the IR in §4); everything after that — node compilation, validation, interpolation, attribute passthrough — happens in this package. All three packages share one node vocabulary and one compiled output.
+
+## 2. Boundaries
+
+### 2.1 In scope
+
+- IR contract: the exact shape of an array page definition (§4, §6)
+- Node compilation: `text` / `heading` / `link` / `if` / `each` / `form` / `table` / `el` / `component` and the embedded structures `field` / `column`
+- Data binding: `{{ path }}` interpolation in two contexts (HTML text/attribute, component PHP literal)
+- Compile-time validation: structure, fields, paths, keys, literals, brace pairing — never silently dropped
+- Attribute passthrough: front-end framework directive whitelist and targeted corrections
+- Front-end integration points: `parse()` and spelling hooks (§8)
+- `Renderer` facade: render an array DSL page straight to HTML (§9)
+- `Html` factory: user-level syntax that normalizes to the same array IR the frontends produce (§10)
+
+### 2.2 Out of scope (explicitly not done)
+
+- Business logic, event handling, state management, route definition — never in a page declaration; left to the front-end framework
+- Runtime parsing — compilation is the only entry point; at runtime only the generated template is used
+- Its own source-text syntax and CLI — an array has no "source file" form; call `compile()` directly; the CLI belongs to the frontend packages
+- Composer third-party dependencies — zero dependencies (only `migears/template`)
+
+## 3. Core principles
+
+### 3.1 The array is the single source of truth
+
+A page declaration is a PHP array. Every change goes back to the array; the generated `.tpl.php` is a **derived file** — it can be recompiled and overwritten at any time and should not be hand-edited. The workflow is fixed: change declaration → compile → render.
+
+### 3.2 Two deliberate compilations
+
+First compilation (this package): array declaration → `.tpl.php` sugar syntax (`## $expr ##`). The output stays readable — you can see at a glance which template syntax each DSL word maps to.
+
+Second compilation: `migears/template`'s `TemplateCompiler` compiles the `.tpl.php` into plain PHP templates (mtime-cached). Rendering is done by PHP; the declaration layer never enters runtime.
+
+Both compilations have a purpose and are neither merged nor skipped.
+
+### 3.3 Extremely lightweight
+
+The implementation stays in the thousand-line range (compiler ≈ 1050 lines, Renderer ≈ 80 lines). Any feature that would significantly bloat it is rejected.
+
+### 3.4 Compilation is validation
+
+At compile time, structure, fields, paths, and keys are fully validated, with **nothing silently dropped**: unknown keys and misspelled directive names always raise an error rather than being quietly ignored. Error messages must carry the node path so they can be located.
+
+### 3.5 Single implementation
+
+Frontends do not duplicate compilation logic. Format-specific differences (attribute spelling, attribute storage location, error wording, exception class) converge into the §8 hook methods; a new format frontend only needs to implement `parse()` plus the hooks and automatically inherits the whole node vocabulary.
+
+## 4. IR contract: page declaration
+
+A page declaration is a PHP array (`array<string, mixed>`). The root mapping is a page and needs no `type` key.
+
+### 4.1 Top-level fields
+
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `title` | string | no | page title, written into the `title` section |
+| `layout` | string | no | the layout template to extend (e.g. `layout/admin`) |
+| `body` | array | conditional | the page body node tree when there is no `layout` |
+| `sections` | array | conditional | with a `layout`, section name → node tree array |
+
+Rule: when `layout` is present, `sections` is required and `body` is forbidden; when `layout` is absent, `body` is required and `sections` is forbidden. Violating this is a compile error. Any key on the root other than `title` / `layout` / `body` / `sections` is a compile error.
+
+When `title` is present, a `title` section is generated automatically (only effective with a `layout`; without one it is ignored with a warning).
+
+### 4.2 Nodes
+
+The values of `body` / `sections` are all **node tree arrays**: `list<array{type: string, ...}>`. Every node must have a string `type` key. There are 9 node types + 2 embedded structures (`field`, `column` do not carry `type`; their position decides their type; if written it must match).
+
+| Node | Purpose | Outputs a tag |
+|------|---------|---------------|
+| `text` | text, supports interpolation | no |
+| `heading` | heading | yes |
+| `link` | link | yes |
+| `if` | conditional display | no |
+| `each` | loop over a list | no |
+| `form` | form container | yes |
+| `table` | table container | yes |
+| `el` | generic element container | yes |
+| `component` | reference a bundled or custom component | no |
+
+Nodes that do not output a tag (`text` / `if` / `each` / `component`) cannot take passthrough attributes; wrap them in `el`.
+
+## 5. IR contract: field rules
+
+### 5.1 Three kinds of keys
+
+Keys on a node are handled in three categories:
+
+1. **DSL fields** — fields the node type itself consumes (e.g. `heading.level`, `link.href`, `form.action`), including the structural sub-keys (`then`, `body`, `fields`, `columns`, `data`, `options`, `content`).
+2. **Passthrough attributes** — output onto the tag the node generates. Whitelist:
+   - `@event` — the Alpine / Vue event shorthand
+   - any directive name containing a colon: `x-on:click`, `x-bind:href`, `v-on:click`, `wire:click`, `on:click`, `:href`
+   - prefixes: `x-`, `v-`, `hx-`, `data-`
+   - common HTML hooks: `class`, `id`, `style`, plus `bind` (a framework binding attribute whose value is a browser-side variable name)
+3. **Anything else is a compile error** — unknown keys are treated as typos, never silently dropped.
+
+**Targeted interception**: `x-on-*` / `x-bind-*` / `x-transition-*` do not exist in Alpine (Alpine always uses a colon). Because the `x-` prefix normally passes through, such typos would pass silently, compile, and leave a dead directive — so they are intercepted individually with a suggestion (write `x-on:click` or `@click` instead).
+
+**Duplicate attribute detection**: emitting two same-named attributes from one node (e.g. `class` passed twice) is a compile error.
+
+### 5.2 Normalization and escaping of passthrough values
+
+Passthrough values are first normalized into a shape an HTML attribute can carry, then escaped (`ENT_COMPAT`, keeping single quotes readable), and only **then** interpolated with `{{ }}` — the order cannot be reversed, or the quotes inside the `## ##` sugar would be mangled by escaping.
+
+| Value type | Normalization result |
+|------------|----------------------|
+| string | as-is |
+| null | `''` (the array spelling of valueless attributes like `x-cloak:`) |
+| bool | `true` / `false` |
+| int / float | decimal string |
+| other (array/object) | compile error |
+
+### 5.3 Literal fields
+
+The following fields are **literals**: they are output as-is, and writing `{{ }}` in them is a compile error:
+
+`layout`, section names, `form.method`, `field.name`, `field.label`, `option` values and display text, `table.empty`, `column.label`, `component.name`, and the keys of `component.data`.
+
+### 5.4 Embedded structures
+
+`field` and `column` are embedded structures: their type is decided by position. If `type` is written, its value must match the position (`field` / `column`) or it is a compile error.
+
+### 5.5 Collection shapes and type guards
+
+Values appearing in structural positions come in two shapes; going out of bounds is a compile error:
+
+| Position | Shape | Elements |
+|----------|-------|----------|
+| `body`, `sections.<name>`, `if.then`, `if.else`, `each.body`, `el.body`, `column.content` | list | node objects |
+| `form.fields`, `table.columns` | list | field / column objects |
+| `sections`, `field.options`, `component.data` | mapping | section name → node tree; option value → text; data name → string |
+
+Writing a list as a mapping (a single node without `[ ]` wrapping, or a bare mapping after `fields:`) is the most common shape mistake. Such values are still arrays, so a mere `is_array()` check lets them through until a deeper, misdirected error surfaces (`content[type]: node must be an object`) — misreporting "missing list wrapping" as "node is not an object". So every list entry point is guarded by `requireList()`, and both a non-array and a mapping are named at the point they occur, stating what type was received.
+
+Writing a mapping as a list (`sections` followed directly by a node, `component.data` followed directly by several values) similarly has no key to lean on; it used to fall through to a deeper error like "section name 0" / "data key 0". Such entry points are guarded by `requireMap()`: an empty array is an empty mapping (`[]` is both an empty list and an empty mapping, holding nothing that could be misread). `field.options` is a deliberate exception — when option values are plain numbers (e.g. `value="0"`), PHP keys themselves are `0..n-1` and indistinguishable from a list, so there only "must be an array" is checked.
+
+The accompanying scalar type guards work the same way: `layout`, `title` must be strings, `sections` must be a mapping, `field.required` must be a boolean, `option` text must be a string. These values used to be handled by `(string)` casts or `=== true` comparisons, which either leaked PHP warnings (`Array to string conversion`) or silently ignored mismatches — both forbidden by this module.
+
+**Overall contract**: every compile-time error must be a path-carrying `CompileException`; no PHP warning may leak into the output, and no raw `TypeError` may be thrown for a type mismatch.
+
+## 6. IR contract: node grammar
+
+### 6.1 text
+
+```php
+['type' => 'text', 'text' => 'Hello, {{ user.name }}']
+```
+
+`text` is required and output as-is (the literal part is controlled by the author and may contain HTML). Interpolation is auto-escaped. Compiles to bare text (no tag).
+
+### 6.2 heading
+
+```php
+['type' => 'heading', 'level' => 2, 'text' => 'User management']
+```
+
+`text` is required; `level` accepts 1–6 and defaults to 1; out of range is a compile error. Compiles to `<hN>...</hN>`.
+
+### 6.3 link
+
+```php
+['type' => 'link', 'href' => '/users/{{ user.id }}/edit', 'text' => 'Edit']
+```
+
+`href` and `text` are required and both support interpolation. `target` is optional (supports interpolation) and not validated — HTML allows named targets beyond `_blank`, and an enum whitelist would kill legitimate uses.
+
+### 6.4 if
+
+```php
+['type' => 'if', 'when' => 'user.loggedIn', 'then' => [...], 'else' => [...]]
+```
+
+`when` is required; the path may carry a `!` prefix to negate (`'!user.hidden'`); `then` is a required node tree; `else` is an optional node tree. Compiles to:
+
+```php
+<?php if ($user['loggedIn'] ?? null): ?>
+  ...then...
+<?php else: ?>
+  ...else...
+<?php endif ?>
+```
+
+### 6.5 each
+
+```php
+['type' => 'each', 'items' => 'users', 'as' => 'user', 'index' => 'i', 'body' => [...]]
+```
+
+`items` is a required path (`!` negation belongs only to `if.when`; writing `!` here is reported as an invalid path); `as` defaults to `item`; `index` is an optional variable name; `body` is a required node tree. Compiles to:
+
+```php
+<?php foreach ($users ?? [] as $i => $user): ?>
+  ...body...
+<?php endforeach ?>
+```
+
+`as` / `index` must be legal PHP variable names or it is a compile error. Nested `each` is allowed; when the inner `as` shares a name, PHP semantics naturally shadow it.
+
+### 6.6 form + field
+
+```php
+['type' => 'form', 'action' => '/users/save', 'method' => 'post', 'fields' => [...]]
+```
+
+`action` is required (supports interpolation), `method` defaults to `post` and only allows `get` / `post`, `fields` is a required array.
+
+**field** fields:
+
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `name` | string literal | yes | field name (the `name` attribute); also the default for the `id` and the `label`'s `for` |
+| `id` | string literal | no | defaults to `name`; when given explicitly it overrides it and also drives the `label`'s `for` (output once, no longer defaulted) |
+| `bind` | JS name/path | no | the framework binding attribute, outputs `bind="user.email"`; the value is a browser-side name — writing `{{ }}` is a compile error |
+| `label` | string literal | yes | the label text; for `submit` types the button text |
+| `input` | enum | no | see below, defaults to `text` |
+| `value` | path | no | the bound value, compiled to `value="## $path ?? '' ##"`; may be written as `{{ user.name }}` (recommended, the data is more visible); not supported on `submit` (buttons use `label`) |
+| `required` | bool | no | defaults to false; outputs `required` on inputs that support it; `true` on `hidden` / `submit` is a compile error |
+| `placeholder` | string | no | only text/password/email/number, supports interpolation; on other inputs it is a compile error |
+| `options` | array | select only | `['admin' => 'Admin']` mapping; both value and text are literals |
+| `checked` | path | checkbox only | outputs the `checked` attribute when truthy; on other inputs it is a compile error |
+| `rows` | int | textarea only | defaults to 4, must be a positive integer; on other inputs it is a compile error |
+
+`input` enum: `text`, `password`, `email`, `number`, `textarea`, `select`, `checkbox`, `hidden`, `submit`. An invalid enum is a compile error. A missing `options` on `select`, `options` used on an unsupported input, or `value` used on `select` are all compile errors.
+
+A field's **usage scope** is equally a hard constraint — out of range is a compile error, and these fields used to be silently dropped, contradicting this module's "never silently drop" contract: `placeholder` only text/password/email/number, `checked` only checkbox, `rows` only textarea, `value` not on submit, `required` only text/password/email/number/textarea/select/checkbox. When `required` is true it is also output on select / textarea / checkbox.
+
+Compiled output (excerpt):
+
+```php
+<form action="/users/save" method="post">
+  <label for="name">Name</label>
+  <input type="text" name="name" id="name" value="## $user['name'] ?? '' ##" required>
+  ...
+</form>
+```
+
+### 6.7 table + column
+
+```php
+['type' => 'table', 'items' => 'users', 'as' => 'user', 'empty' => 'No data', 'columns' => [...]]
+```
+
+`items` is a required path; `as` defaults to `row`; `empty` is optional (literal); `columns` is a required array.
+
+**column**: `label` is required (literal); exactly one of `pop` (a data reference PHP renders into the cell, written `'{{ row.id }}'`) and `content` (a node tree, row-variable scope) is required — providing both is a compile error. The `pop` value must carry `{{ }}` and its first segment must equal the table's `as` variable (default `row`) — a bare path without braces, or a reference to a different variable, is a compile error.
+
+> Vocabulary note: this module **only uses `pop` for "PHP renders the data into the page"**, never `bind`; `bind` refers to the front-end framework's binding attribute (browser side). The combined form and `popAndBind` are in §10.
+
+Compiled output:
+
+```php
+<table>
+<thead><tr><th>ID</th><th>Name</th></tr></thead>
+<tbody>
+<?php if (($users ?? []) === []): ?>
+  <tr><td colspan="2">No data</td></tr>
+<?php else: ?>
+<?php foreach ($users ?? [] as $user): ?>
+<tr>
+<td>## $user['id'] ?? '' ##</td>
+<td>## $user['name'] ?? '' ##</td>
+</tr>
+<?php endforeach ?>
+<?php endif ?>
+</tbody>
+</table>
+```
+
+### 6.8 component
+
+```php
+['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}', 'body' => 'About']]
+```
+
+`name` is required (literal, the template name); `data` is an optional mapping whose keys are literals and values support `{{ path }}` interpolation (compiled as PHP-context concatenation, not pre-escaped); values must be strings. Compiles to:
+
+```php
+<?= $this->component('card', [
+    'title' => ($user['name'] ?? ''),
+    'body' => 'About',
+]) ?>
+```
+
+Interpolated values reach the component unescaped; escaping is the component template's decision (text with `$this->e()`, trusted HTML with `$this->raw()`) — pre-escaping at compile time would stack into double escaping.
+
+### 6.9 el
+
+```php
+['type' => 'el', 'tag' => 'div', 'x-data' => '{ open: false }', 'body' => [...]]
+```
+
+`tag` is required (lowercase HTML tag name, `/^[a-z][a-z0-9-]*$/`); `body` is a child node tree, optional (omitting it means "empty"). Omitting differs from "wrote a non-list": `body` as `null` (a left-empty key in a mapping source), a string, or a single node mapping is a compile error, not treated as an empty body. It accepts arbitrary passthrough attributes. Compiles to:
+
+```php
+<div x-data="{ open: false }">
+<h3>## $user['name'] ?? '' ##</h3>
+Content
+</div>
+```
+
+An empty `body` outputs the self-closing form `<div></div>` (attributes preserved).
+
+## 7. IR contract: data binding
+
+### 7.1 Path expressions
+
+A path is the only vehicle for data binding, with a strict grammar:
+
+```
+path   := segment ( "." segment )*
+segment := [A-Za-z_][A-Za-z0-9_]*
+```
+
+The first segment is the variable name; later segments are array-key accesses. Compiled access carries a fallback per context: `?? ''` in text/attribute contexts, `?? null` in conditional contexts, `?? []` in loop contexts (`each.items` / `table.items`, letting empty data render as empty rather than error).
+
+### 7.2 The two contexts of `{{ path }}` interpolation
+
+| Context | How it compiles | Example |
+|---------|-----------------|---------|
+| HTML text / attribute (text, heading, link, attribute values, ...) | keeps the `## expr ##` sugar, escaped at template render | `href="/users/## $user['id'] ?? '' ##"` |
+| PHP array literal (`component`'s `data`) | string concatenation `'...' . ($expr) . '...'`, **not pre-escaped** | `'title' => 'Edit ' . ($user['name'] ?? '')` |
+
+The PHP context must never emit `## ##` sugar — `TemplateCompiler` would replace it inside a PHP string literal and cause a syntax error.
+
+### 7.3 Invalid paths and interpolation symbols
+
+Anything inside `{{ ... }}` that does not match the path grammar (function calls, arithmetic, string literals, nested interpolation) is a compile error. Interpolation uses at most two braces: the presence of `{{{` or `}}}` is a compile error (three braces defeat the pairing count and leave mangled braces in the output).
+
+### 7.4 Data shape constraint
+
+Paths compile to array access (`$user['name']`). Page data is agreed to be **array-shaped**, normalized by the controller at the boundary (Domain entities become arrays). This is a documented constraint; this module does no object compatibility.
+
+## 8. Front-end integration points (hooks)
+
+Frontend packages extend `MiGears\Pages\Compiler` and only implement parsing and spelling differences:
+
+| Hook | Signature | Semantics |
+|------|-----------|-----------|
+| `parse` | `parse(string $source): array` | source syntax → IR (the abstract base throws: array pages call `compile()` directly) |
+| `mapAttributeName` | `(string $name, string $path): string` | frontend spelling → output name. The base accepts `@event` as-is; XML overrides `__click` → `@click` |
+| `attributeCandidates` | `(array $n, list<string> $dslFields): list<array{name, value, explicit}>` | attribute candidate enumeration. Mapping-shaped sources (array/YAML) read from the node itself by default; XML overrides to read from `<attr>` children, where `explicit` marks explicit attributes (skip name mapping, output as-is) |
+| `normalizeAttrValue` | `(mixed $value, string $name, string $path): string` | scalar normalization (§5.2); string sources are naturally all strings, no override needed |
+| `newException` | `(string $message): CompileException` | the exception class; a frontend overrides it to return its own, and one `catch` covers every error |
+| `nodeRef` / `containerRef` / `explicitAttrRef` | `(string): string` | the wording for node/container/explicit-attribute in error messages |
+| `COLON_ONLY_DIRECTIVES` | `array<string, list<string>>` | the hyphen-form interception table (defaults to Alpine's three directives) |
+
+The base class also provides the public entry points: `compile(array $page)`, `compileSource(string $source)` (goes through `parse()`), `compileFile(string $path)`, `compileToFile(string $sourcePath, ?string $outputDir)` (`xxx.page.*` → `xxx.tpl.php`).
+
+## 9. Renderer facade
+
+`MiGears\Pages\Renderer` provides the one-step entry from an array DSL to HTML:
+
+```php
+$renderer = new Renderer($template, $compiler, $cacheDir);
+echo $renderer->render($page, $data);
+```
+
+- Internally it does: `compile()` → write to `$cacheDir` (content-addressed: `page_<md5(source)>.tpl.php`, not rewritten while the declaration is unchanged) → `$template->render()`.
+- On construction it registers `$cacheDir` into `$template`'s search paths; layouts and components still resolve through the template paths the user already configured. Because it is an unshift, the derived directory comes **before** the user's template directories: normal names (`page_<md5>`) do not collide, but the direction is "derivatives win".
+- Rendering the same declaration twice hits the cache file and does one disk write.
+- The cache **only ever grows**: a changed declaration writes a new file, and old ones are not auto-pruned. `clearCache()` deletes the `page_*.tpl.php` this class wrote and returns the deleted count (repeated calls return 0); the cache directory itself stays, and pages are recompiled on the next `render()`. Clearing matches that name exactly, so hand-written templates, foreign files, and the template compiler's own outputs sharing the directory are unaffected. The template compiler's own outputs are managed by `Template` and are outside this API — to reset both at once, deleting the whole cache directory remains safe.
+
+## 10. User syntax: the Html factory
+
+`MiGears\Pages\Html` is the syntax for page authors: one factory per node, named after the HTML it outputs, with the remaining fields filled by same-named member methods.
+
+**Factory names are all caps; member methods are lowercase.** Uppercase is a node, lowercase is a field, so `h5::INPUT('email')->label('邮箱')` reads as "a label plus an attribute". `->THEN()` and `->ELSE()` are the only two uppercase methods because they name statements rather than attributes. Two points to note: PHP method names are case-insensitive, so the lowercase spelling of a factory and the all-caps one point to the same method and this layer cannot block the lowercase spelling; and all-caps method names deviate from the PSR-1 / PSR-12 camelCase requirement — a deliberate exception of this layer. The convention is guarded by `tests/FactoryNamingTest.php` — it inspects the methods declared by `Html` and scans the package's own README, spec, `docs/`, examples, and source for factory-call spelling. When a single tag name is mentioned it follows HTML habit and is lowercase (`textarea`, `select`); only factory-call sites are all-caps; the normalized `type` also stays in the lowercase vocabulary (`h5::IF` → `type: if`), matching what XML and YAML parse into.
+
+```php
+use MiGears\Pages\Html as h5;
+
+h5::HEADING(2)->text('User list')->id('usersTitle')->class('page-title')
+h5::TABLE('users')->columns([h5::COL('Name')->pop('{{ row.name }}')])->empty('No data')
+h5::FORM('/users/save')->fields([h5::INPUT('email')->label('Email')->type('email')])
+```
+
+**It is just sugar; its landing shape is still an array.** A factory returns a `Node` object, and `Compiler::compile()` recursively normalizes the whole tree into the §4 array IR at the entry; after that it shares the same compilation path as a hand-written array, XML, and YAML — the same node vocabulary, the same validation, the same error wording. Frontend `parse()` still produces arrays; this layer has no effect on them.
+
+**Factories only name fields; they do not validate.** Unknown attributes, out-of-range `level`, misplaced `placeholder`, and missing required fields are all thrown by the compiler at compile time as path-carrying `CompileException`; this layer neither duplicates validation rules nor changes the error wording.
+
+A factory takes the value that "no longer holds once you leave this node"; the iteration nodes `EACH` and `TABLE` additionally accept an optional loop header; every other factory takes exactly one argument:
+
+| Factory | Argument | Normalized node |
+|---------|----------|-----------------|
+| `h5::TEXT` | `text` | `type: text` |
+| `h5::HEADING` | `level` (default 1) | `type: heading` |
+| `h5::LINK` | `href` | `type: link` |
+| `h5::IF` | `when` | `type: if` |
+| `h5::EACH` | `items`, `as`, `index` (last two optional) | `type: each` |
+| `h5::FORM` | `action` | `type: form` |
+| `h5::INPUT` | `name` | `type: field` + `input: text` |
+| `h5::TEXTAREA` | `name` | `type: field` + `input: textarea` |
+| `h5::SELECT` | `name` | `type: field` + `input: select` |
+| `h5::TABLE` | `items`, `as` (optional) | `type: table` |
+| `h5::COL` | `label` | `type: column` |
+| `h5::COMPONENT` | `name` | `type: component` |
+| `h5::EL` | `tag` | `type: el` |
+
+**Loop header as optional arguments.** The signatures are `EACH(string $items, ?string $as = null, ?string $index = null)` and `TABLE(string $items, ?string $as = null)`: the required value comes first, the header arguments after and omissible — so either named args (`EACH('users', as: 'user', index: 'i')`, PHP 8 named arguments, making the parameter names public API) or just `EACH('users')` work. When omitted, the fields are not written and the compiler supplies the §6 defaults (`as` is `item` / `row`; `index` introduces no index variable — **no default `$i` binding**, or nested loops would fight over the same name, the inner shadowing the outer silently); when given, the field is written, and calling `->AS()` / `->INDEX()` afterwards throws `\LogicException` for repeated setting. `Node::AS()` / `Node::INDEX()` stay, equivalent to the named arguments. "Every other factory takes one argument" is guarded by `HtmlTest::testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument()` via reflection, so this exception cannot silently spread.
+
+Member methods fall into three groups:
+
+- **Base-class methods** (field names are exactly the §5 / §6 field names): `text`, `target`, `THEN`, `ELSE`, `BODY`, `AS`, `INDEX`, `fields`, `method`, `columns`, `empty`, `data`, `label`, `value`, `required`, `placeholder`, `options`, `checked`, `rows`, `pop`, `content`. Using the wrong node (e.g. `label()` on `HEADING`) is not blocked here; the compiler's unknown-key check names it.
+- **Attribute methods**: only on nodes that output a tag (`HEADING`, `LINK`, `FORM`, `TABLE`, `EL`, and form controls) — `class`, `id`, `style`, `attr(name, value)`, `on(event, expression)` (outputs `@event`), `bind(name)` (outputs `bind="name"`; the value is a browser-side variable name). Nodes that output no tag have none of these; writing them is a PHP-level `undefined method`.
+- **Control methods**: only `h5::INPUT` has `type(control)` (`type` is the `<input>`-only attribute). `h5::TEXTAREA` and `h5::SELECT` fix their control once, in the factory. All three have `popAndBind(reference, attribute = 'bind')`: the `pop` + `bind` shortcut that writes the field's `value` and that attribute (default `bind`; may be `x-model` / `v-model`) to the same data reference, for the common case where front-end and back-end share a variable name; when the two sides differ, write `value()` and `bind()` separately.
+- **Server-side vs browser-side split**: `pop` / `value` are server-side (compiled to `## $var['key'] ?? '' ##`, evaluated at render), `bind` only emits an attribute and hands the name to the browser (the value must be a JS variable name/path; writing `{{ }}` is a compile error).
+
+**Repeated setting throws `\LogicException` immediately**, carrying on the "never silently overwrite" stance: writing the same field twice (`->text('a')->text('b')`), the same attribute twice (`->class('a')->class('b')`), or `h5::INPUT(...)->type('a')->type('b')` all fail outright. `Node::toArray()` retrieves the array shape for inspection before compiling.
+
+## 11. Error handling
+
+All errors throw `CompileException` (extends `\RuntimeException`), with a node path in the message:
+
+```
+sections.content[2].columns[2]: column specifies both pop and content
+```
+
+Error classes:
+
+| Category | Detection | Example |
+|----------|-----------|---------|
+| Root type error | root is not an array / wrong shape | page: unknown field "foo" |
+| Structural error | a top-level rule is violated | specifying both layout and body |
+| Unknown node | `type` not in the vocabulary | unknown node type "foo" |
+| Missing/invalid field | required missing, enum out of range, wrong type | if missing when; level is 7 |
+| Path error | interpolation/path grammar mismatch | invalid path "user name" |
+| Context error | pop/content mutually exclusive, etc. | column has both pop and content; pop does not reference the row variable |
+| Root field type error | `layout` / `title` not a string, `sections` not a mapping | page: layout must be a string, got array |
+| method type error | `form.method` not a string (validated before any cast, no PHP warning leaks) | method must be the string "get" or "post", got array |
+| List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), currently a keyed mapping; wrap it in [ ] |
+| Field value type error | `field.required` not a boolean, `option` text not a string | required must be a boolean, got string |
+| Literal error | `{{ }}` written in a literal field | "empty" is a literal field and does not support {{ }} interpolation |
+| Template-layer marker | `##` in a literal field (`label` / `name` / `tag` / `empty` / option, etc.) — these fields are written verbatim with no place to escape | body[0].fields[0]: "label" is a literal; "##" (template-layer syntax) is not allowed |
+| Mapping shape error | `sections` / `component.data` written as a list | page: sections must be a mapping of section names to node trees, currently a list |
+| Field usage-scope error | `placeholder` / `checked` / `rows` / `value` / `required` on unsupported inputs | "placeholder" is only used for text / password / email / number fields, current input is "select" |
+| Embedded structure type error | a field/column `type` mismatches its position | type must be "field" |
+| Unknown key | neither a DSL field nor in the passthrough whitelist | unknown attribute "levl" |
+| Hyphen directive name | `x-on-*` / `x-bind-*` / `x-transition-*` | write "x-on:click" or "@click" |
+| Brace mismatch | interpolation contains `{{{` or `}}}` | interpolation cannot use three consecutive braces |
+| Attribute with no mount point | a passthrough attribute on a node that outputs no tag | node "text" emits no tag; wrap the content in type: el |
+| Attribute value type error | a passthrough value is not a scalar | the value of attribute "x" must be a scalar, got array |
+| Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined more than once |
+
+It fails fast: the first error throws, and the `CompileException` carries the path from root to node.
+
+## 12. Module structure
+
+```
+migears-pages/
+├── composer.json            name: migears/pages; require: php ^8.1, migears/template ^2.0
+├── README.md                bilingual (Chinese/English), architecture, installation, quick start, user syntax (h5 factory), array DSL reference, custom components, frontend packages, error handling, testing notes
+├── LICENSE
+├── src/
+│   ├── Compiler.php         the compiler (core)
+│   ├── Renderer.php         one-step rendering facade (~80 lines)
+│   ├── Html.php             user syntax: node factories (§10)
+│   ├── Node.php             node base class: field methods, array normalization, repeated-setting guard
+│   ├── PlainNode.php        nodes that output no tag
+│   ├── TagNode.php          nodes that output a tag (attribute methods: class / id / style / attr / on / bind)
+│   ├── FieldNode.php        form controls: positions where the server can fill a value (popAndBind)
+│   ├── InputNode.php        `<input>` fields (the `type` method)
+│   └── Exception/
+│       └── CompileException.php
+└── tests/
+    ├── CompilerTest.php     node compilation, validation, interpolation, passthrough assertions
+    ├── RendererTest.php     full rendering through migears/template
+    ├── HtmlTest.php         Html factory: normalization byte-identical to a hand-written array
+    ├── FactoryNamingTest.php  naming convention guard: factory names all caps, member methods lowercase (§10)
+    └── fixtures/
+        └── views/           layouts used by rendering tests
+```
+
+Composer dependency note: what runs at runtime is the generated template, which depends on `migears/template`, so it is a `require`. Parsing extensions (ext-yaml, SimpleXML) are declared by each frontend package; this package is not aware of them.
+
+## 13. Test plan (TDD)
+
+Unit tests are driven by array page definitions and assert that the compiled output is byte-identical to (or contains) the expected `.tpl.php`.
+
+| Group | Cases |
+|-------|-------|
+| Text | text: plain / single interpolation / multiple interpolations / multi-line |
+| Structure | heading at each level, out-of-range level error; link href/text interpolation |
+| Conditional | if then / then+else / `!` negation / missing when error |
+| Loop | each basic / index / nested / missing items error / loop header as named args or methods (equivalent) / omitted header doesn't write fields / both sites set throws repeated-setting / signature reflection guard |
+| Form | each input enum / select options / checkbox checked / submit / invalid enum / select missing options / options on unsupported input / method not a string (array, bool, int) type error without leaking PHP warnings / required not boolean / option text not string / placeholder, checked, rows, value, required out of scope errors / required output on select, textarea, checkbox |
+| Table | pop columns (`{{ row.x }}`) / content columns / empty / default and custom as / row-variable validation (bare path, other variable errors) / pop+content together error / missing columns error / content and columns non-array or written as mapping each give a readable error |
+| bind | any tag and field can output `bind="js.name"`; values containing `{{ }}` or not a JS name error; `popAndBind` writes both value and bind (including the `x-model` spelling) |
+| Field id | `id` defaults to `name` (the label's `for` same value); an explicit `id` overrides it and is output once |
+| Factory naming | `Html`'s 13 static factories declared all-caps (`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`) with no extra static methods; `THEN` / `ELSE` the only two uppercase member methods; all factory-call spellings in README, `docs/`, `spec.md`, examples, source, and tests are all-caps (anti-doc-drift, see §10) |
+| Page root | body not an array or written as a single node mapping, layout / title not a string, sections not a mapping, sections value not a list (including null) |
+| Collection shape | then / else / body / content / sections values / fields / columns written as a keyed mapping give a readable error, not falling through to `content[type]: node must be an object`; `sections`, `component.data` written as a list give a readable error |
+| Warning leakage | data-driven assertions over all malformed inputs: only a `CompileException` (no `TypeError`) and zero PHP warnings |
+| Layout | layout+sections / standalone body / both together error / both missing error / title section |
+| Component | no data / data interpolation (PHP-context concatenation) / data literal / non-string data value error / `{{ }}` in a data key error / data written as a list error |
+| Binding | path-grammar boundaries (invalid characters, empty segment, `!` only in when) |
+| Embedded structure | `type: field` / `type: column` correct ones pass, writing the other one errors |
+| Literal | literal fields like `field.label`, `table.empty`, `option`, and the keys of `component.data` with `{{ }}` error |
+| Template-layer marker | `##` in text, attribute values, and component values is escaped as template-layer syntax (output contains `\##`) and renders verbatim without being taken as an expression (Renderer end-to-end asserts `## Note ##` and `### $user["name"] ###`); `##` in a literal field errors with a path; a single `#` needs no escaping |
+| Passthrough | Alpine / Vue / htmx / Livewire directives and `class`/`id`/`style` passthrough; `@click` as-is; value escaping; interpolation inside values; scalar normalization (integer/boolean/null); duplicate attribute error |
+| Passthrough misuse | unknown key error; attribute on a tag-less node error; unknown root field error |
+| el | with body / empty body / missing tag error / invalid tag error / body as null error |
+| Targeted interception | `x-on-click` errors and suggests `x-on:click` or `@click` |
+| Interpolation symbol | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` error; adjacent `{{ a }}{{ b }}` allowed |
+| Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
+| Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
+| Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
+| Html repeated setting | same field twice, same attribute twice, `input`'s `type` twice all throw `LogicException`; `textarea` / `select` have no `type()`, and tag-less nodes have no attribute methods (PHP-level `undefined method`) |
+
+## 14. Explicitly not done (future candidates)
+
+- Event handling, state management, routing — never
+- Expression-language extensions (arithmetic, functions, ternary)
+- Runtime parsing / hot reload
+- Covering HTML form controls beyond `input` (file upload, date picker, etc.)
+- An array-DSL CLI (no source-file form; the CLI belongs to each frontend package)
+
+---
+
 # migears/pages 模块规格说明
 
 版本：2.0.0（草案，待评审）
@@ -374,7 +902,7 @@ echo $renderer->render($page, $data);
 
 `MiGears\Pages\Html` 是给页面作者用的语法：一个节点一个工厂，工厂名与它输出的 HTML 对齐，其余字段用同名成员方法补齐。
 
-**工厂名全大写，成员方法小写。** 大写是节点、小写是字段，`h5::INPUT('email')->label('邮箱')` 因此读起来就是「标签加属性」。`->THEN()`、`->ELSE()` 是仅有的两个大写方法，因为它们命名的是语句而不是属性。两点必须记明：一是 PHP 方法名不区分大小写，工厂名的小写拼写与全大写指向同一个方法，本层无法拦截小写写法；二是全大写方法名偏离 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。约定由 `tests/FactoryNamingTest.php` 守住——它检查 `Html` 声明的方法名，并扫描本包自己的 README、规格、`docs/`、示例与源码里工厂调用的拼写。单个提到标签名时按 HTML 习惯写小写（`textarea`、`select`），只有工厂调用处的名字全大写；归一后的 `type` 也仍是小写词表（`h5::IF` → `type: if`），与 XML、YAML 解析出的模型一致。
+**工厂名全大写，成员方法小写。** 大写是节点、小写是字段，`h5::INPUT('email')->label('邮箱')` 因此读起来就是「标签加属性」。`->THEN()`、`->ELSE()` 是仅有的两个大写成员方法，因为它们命名的是语句而不是属性。两点必须记明：一是 PHP 方法名不区分大小写，工厂名的小写拼写与全大写指向同一个方法，本层无法拦截小写写法；二是全大写方法名偏离 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。约定由 `tests/FactoryNamingTest.php` 守住——它检查 `Html` 声明的方法名，并扫描本包自己的 README、规格、`docs/`、示例与源码里工厂调用的拼写。单个提到标签名时按 HTML 习惯写小写（`textarea`、`select`），只有工厂调用处的名字全大写；归一后的 `type` 也仍是小写词表（`h5::IF` → `type: if`），与 XML、YAML 解析出的模型一致。
 
 ```php
 use MiGears\Pages\Html as h5;
@@ -406,11 +934,11 @@ h5::FORM('/users/save')->fields([h5::INPUT('email')->label('邮箱')->type('emai
 | `h5::COMPONENT` | `name` | `type: component` |
 | `h5::EL` | `tag` | `type: el` |
 
-**循环头作为可选参数。** 签名是 `EACH(string $items, ?string $as = null, ?string $index = null)` 与 `TABLE(string $items, ?string $as = null)`：必填项在前，头参数在后且可省略，所以既可以用命名参数（`EACH('users', as: 'user', index: 'i')`，PHP 8 的名字参数，参数名因此是公开 API），也可以只写 `EACH('users')`。省略时不写入对应字段，由编译器补 §6 的默认值（`as` 为 `item` / `row`，`index` 则是不引入下标变量——**不默认绑 `$i`**，否则嵌套循环会互抢同名变量、内层静默遮蔽外层）；显式给出即写入该字段，之后再调 `->as()` / `->index()` 会按重复设置抛 `\LogicException`。`Node::as()` / `Node::index()` 保留，与命名参数等价。“其余工厂只收一个参数”由 `HtmlTest::testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument()` 用反射守住，避免这个例外悄悄扩散。
+**循环头作为可选参数。** 签名是 `EACH(string $items, ?string $as = null, ?string $index = null)` 与 `TABLE(string $items, ?string $as = null)`：必填项在前，头参数在后且可省略，所以既可以用命名参数（`EACH('users', as: 'user', index: 'i')`，PHP 8 的名字参数，参数名因此是公开 API），也可以只写 `EACH('users')`。省略时不写入对应字段，由编译器补 §6 的默认值（`as` 为 `item` / `row`，`index` 则是不引入下标变量——**不默认绑 `$i`**，否则嵌套循环会互抢同名变量、内层静默遮蔽外层）；显式给出即写入该字段，之后再调 `->AS()` / `->INDEX()` 会按重复设置抛 `\LogicException`。`Node::AS()` / `Node::INDEX()` 保留，与命名参数等价。"其余工厂只收一个参数"由 `HtmlTest::testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument()` 用反射守住，避免这个例外悄悄扩散。
 
 成员方法按归属分三组：
 
-- **基类方法**（字段名即 §5 / §6 的字段名）：`text`、`target`、`THEN`、`ELSE`、`body`、`as`、`index`、`fields`、`method`、`columns`、`empty`、`data`、`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`、`pop`、`content`。用错节点（如 `HEADING` 上调 `label()`）不在此层拦截，由编译器的未知键检查点名。
+- **基类方法**（字段名即 §5 / §6 的字段名）：`text`、`target`、`THEN`、`ELSE`、`BODY`、`AS`、`INDEX`、`fields`、`method`、`columns`、`empty`、`data`、`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`、`pop`、`content`。用错节点（如 `HEADING` 上调 `label()`）不在此层拦截，由编译器的未知键检查点名。
 - **属性方法**：只出现在输出标签的节点（`HEADING`、`LINK`、`FORM`、`TABLE`、`EL`，以及表单控件）上——`class`、`id`、`style`、`attr(name, value)`、`on(event, expression)`（输出 `@event`）、`bind(name)`（输出 `bind="name"`，值是浏览器端变量名）。不输出标签的节点没有这些方法，写出来是 PHP 层的 `undefined method`。
 - **控件方法**：只有 `h5::INPUT` 有 `type(control)`（`type` 是 `<input>` 独有的属性）。`h5::TEXTAREA` 与 `h5::SELECT` 的控件由工厂一次定下。三者都有 `popAndBind(reference, attribute = 'bind')`：`pop` 与 `bind` 合用的 shortcut，把字段的 `value` 与该属性（默认 `bind`，可传 `x-model` / `v-model`）写成同一个数据引用，用于前后端变量同名的常见情形；两侧不一致时分开写 `value()` 与 `bind()`。
 - **服务端与浏览器端的分工**：`pop` / `value` 走服务端（编译成 `## $var['key'] ?? '' ##`，渲染时求值），`bind` 只产出属性、名字交给浏览器（值必须是 JS 变量名/路径，写 `{{ }}` 即编译错误）。

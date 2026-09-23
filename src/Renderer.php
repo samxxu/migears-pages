@@ -44,7 +44,7 @@ class Renderer
 
         if (! is_file($file)) {
             if (! is_dir($this->cacheDir) && ! mkdir($this->cacheDir, 0755, true) && ! is_dir($this->cacheDir)) {
-                throw new \RuntimeException("无法创建缓存目录: {$this->cacheDir}");
+                throw new \RuntimeException("cannot create cache directory: {$this->cacheDir}");
             }
             file_put_contents($file, $source, LOCK_EX);
         }

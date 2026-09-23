@@ -151,20 +151,20 @@ class Compiler
     protected function parse(string $source): array
     {
         throw $this->newException(
-            '此编译器只接受数组页面定义；源文本语法请使用 migears/xml-pages 或 migears/yaml-pages，'
-            . '数组页面请直接调用 compile()'
+            'this compiler only accepts array page declarations; for source syntax use '
+            . 'migears/xml-pages or migears/yaml-pages, and call compile() for array pages'
         );
     }
 
     public function compileFile(string $path): string
     {
         if (! is_file($path)) {
-            throw $this->newException("页面文件不存在: {$path}");
+            throw $this->newException("page file not found: {$path}");
         }
 
         $source = file_get_contents($path);
         if ($source === false) {
-            throw $this->newException("无法读取页面文件: {$path}");
+            throw $this->newException("cannot read page file: {$path}");
         }
 
         return $this->compileSource($source);
@@ -178,7 +178,7 @@ class Compiler
         $target = rtrim($dir, '/\\') . '/' . $base . '.tpl.php';
 
         if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
-            throw $this->newException("无法创建输出目录: {$dir}");
+            throw $this->newException("cannot create output directory: {$dir}");
         }
 
         file_put_contents($target, $compiled, LOCK_EX);
@@ -226,16 +226,16 @@ class Compiler
                 continue;
             }
             $rest = substr($name, strlen($prefix));
-            $hint = implode('" 或 "', array_map(static fn (string $f): string => $f . $rest, $forms));
-            $this->error("{$path}: 未知属性 \"{$name}\"；Alpine 的事件/绑定指令用冒号形式，请写 \"{$hint}\"");
+            $hint = implode('" or "', array_map(static fn (string $f): string => $f . $rest, $forms));
+            $this->error("{$path}: unknown attribute \"{$name}\"; Alpine event/binding directives use a colon, write \"{$hint}\"");
         }
 
         if (! $this->isForwardable($name)) {
-            $this->error("{$path}: 未知属性 \"{$name}\"；透传支持 '@event' 简写、"
-                . '带冒号的指令名（x-on:click / wire:click / :href 等）、'
-                . implode(' / ', self::PASSTHROUGH_PREFIXES) . ' 前缀与 '
+            $this->error("{$path}: unknown attribute \"{$name}\"; the passthrough accepts the '@event' shorthand, "
+                . 'directive names with a colon (x-on:click / wire:click / :href, etc.), the '
+                . implode(' / ', self::PASSTHROUGH_PREFIXES) . ' prefixes and '
                 . implode(' / ', self::PASSTHROUGH_EXACT)
-                . '；请检查拼写');
+                . '; check the spelling');
         }
 
         return $name;
@@ -288,7 +288,7 @@ class Compiler
             return (string) $value;
         }
 
-        $this->error("{$path}: 属性 \"{$name}\" 的值必须是标量，收到 " . gettype($value));
+        $this->error("{$path}: attribute \"{$name}\" must have a scalar value, got " . gettype($value));
     }
 
     /**
@@ -312,7 +312,7 @@ class Compiler
      */
     protected function explicitAttrRef(string $name): string
     {
-        return "属性 \"{$name}\"";
+        return "attribute \"{$name}\"";
     }
 
     /**
@@ -333,7 +333,7 @@ class Compiler
 
             if ($candidate['explicit'] && in_array($name, $dslFields, true)) {
                 $this->error("{$path}: " . $this->explicitAttrRef($name)
-                    . " 与节点字段 \"{$name}\" 同名，请直接使用该字段");
+                    . " collides with the node field \"{$name}\"; use that field directly");
             }
 
             $target = $candidate['explicit'] ? $name : $this->mapAttributeName($name, $path);
@@ -344,8 +344,8 @@ class Compiler
 
             if (isset($emitted[$target])) {
                 $this->error($candidate['explicit']
-                    ? "{$path}: " . $this->explicitAttrRef($target) . ' 与已有的同名属性重复'
-                    : "{$path}: 属性 \"{$target}\" 重复定义");
+                    ? "{$path}: " . $this->explicitAttrRef($target) . ' duplicates an existing attribute of the same name'
+                    : "{$path}: attribute \"{$target}\" defined twice");
             }
             $emitted[$target] = true;
             $out .= $this->renderAttr(
@@ -364,10 +364,10 @@ class Compiler
     private function assertBindName(mixed $value, string $path): void
     {
         if (is_string($value) && (str_contains($value, '{{') || str_contains($value, '}}'))) {
-            $this->error("{$path}: bind 是浏览器端变量名，不支持 {{ }} 插值；服务端渲染请用 value / pop");
+            $this->error("{$path}: bind is a browser-side variable name and does not support {{ }} interpolation; use value / pop for server-side rendering");
         }
         if (! is_string($value) || ! preg_match(self::BIND_PATTERN, $value)) {
-            $this->error("{$path}: bind 的值必须是 JS 变量名或路径（如 user.email），收到 "
+            $this->error("{$path}: bind must hold a JS variable name or path (e.g. user.email), got "
                 . (is_string($value) ? "\"{$value}\"" : gettype($value)));
         }
     }
@@ -375,9 +375,9 @@ class Compiler
     private function renderAttr(string $name, string $value, array $n, string $path, bool $emitsTag): string
     {
         if (! $emitsTag) {
-            $this->error("{$path}: 节点 " . $this->nodeRef((string) $n['type'])
-                . " 不输出标签，无法承载属性 \"{$name}\"；请改用 "
-                . $this->containerRef('el') . ' 包裹内容');
+            $this->error("{$path}: node " . $this->nodeRef((string) $n['type'])
+                . " emits no tag and cannot carry attribute \"{$name}\"; wrap the content in "
+                . $this->containerRef('el'));
         }
 
         // Escape the literal part first, then interpolate: the ## ## sugar must
@@ -402,21 +402,21 @@ class Compiler
 
         foreach ($page as $key => $_) {
             if (! in_array($key, ['title', 'layout', 'body', 'sections'], true)) {
-                $this->error('page: 未知字段 "' . $key . '"（可用: title / layout / body / sections）');
+                $this->error('page: unknown field "' . $key . '" (allowed: title / layout / body / sections)');
             }
         }
 
         if ($hasLayout && $hasBody) {
-            $this->error('page: 同时指定 layout 与 body 冲突，有 layout 时请使用 sections');
+            $this->error('page: layout and body cannot be set together; use sections when layout is set');
         }
         if ($hasLayout && ! $hasSections) {
-            $this->error('page: 指定 layout 时必须同时提供 sections');
+            $this->error('page: layout requires sections to be provided as well');
         }
         if ($hasSections && ! $hasLayout) {
-            $this->error('page: 未指定 layout 时不能使用 sections，请改用 body');
+            $this->error('page: sections cannot be used without layout; use body instead');
         }
         if (! $hasLayout && ! $hasBody) {
-            $this->error('page: 缺少页面内容，请提供 body（无 layout 时）或 layout+sections');
+            $this->error('page: no page content; provide body (without layout) or layout + sections');
         }
 
         if ($hasLayout) {
@@ -424,10 +424,10 @@ class Compiler
         }
 
         if (array_key_exists('title', $page) && $this->warn !== null) {
-            ($this->warn)('page: title 仅在指定 layout 时生效，当前页面无 layout，title 已忽略');
+            ($this->warn)('page: title only applies when layout is set; this page has no layout, so title is ignored');
         }
 
-        $body = $this->requireList($page['body'], 'body', '节点树数组');
+        $body = $this->requireList($page['body'], 'body', 'a node tree array');
 
         return $this->compileNodes($body, 'body');
     }
@@ -436,7 +436,7 @@ class Compiler
     {
         $layout = $page['layout'];
         if (! is_string($layout)) {
-            $this->error('page: layout 必须是字符串，收到 ' . gettype($layout));
+            $this->error('page: layout must be a string, got ' . gettype($layout));
         }
         $layout = $this->literal($layout, 'page', 'layout');
         $out = "<?php \$this->extends('" . $this->str($layout) . "') ?>\n";
@@ -444,26 +444,26 @@ class Compiler
         $sections = $this->requireMap(
             $page['sections'],
             'page',
-            'sections 必须是 section 名到节点树的映射'
+            'sections must be a map of section name to node tree'
         );
 
         $ordered = [];
         if (array_key_exists('title', $page) && ! array_key_exists('title', $sections)) {
             $title = $page['title'];
             if (! is_string($title)) {
-                $this->error('page: title 必须是字符串，收到 ' . gettype($title));
+                $this->error('page: title must be a string, got ' . gettype($title));
             }
             $ordered[] = ['name' => 'title', 'nodes' => [['type' => 'text', 'text' => $title]]];
         }
         foreach ($sections as $name => $nodes) {
             $ordered[] = [
                 'name' => (string) $name,
-                'nodes' => $this->requireList($nodes, 'sections.' . $name, '节点树数组'),
+                'nodes' => $this->requireList($nodes, 'sections.' . $name, 'a node tree array'),
             ];
         }
 
         foreach ($ordered as $section) {
-            $name = $this->literal($section['name'], 'sections', 'section 名');
+            $name = $this->literal($section['name'], 'sections', 'section name');
             $out .= "\n<?php \$this->start('" . $this->str($name) . "') ?>\n";
             $out .= $this->compileNodes($section['nodes'], 'sections.' . $name);
             $out .= "\n<?php \$this->end() ?>";
@@ -485,10 +485,10 @@ class Compiler
     private function compileNode(mixed $node, string $path): string
     {
         if (! is_array($node)) {
-            $this->error("{$path}: 节点必须是对象");
+            $this->error("{$path}: node must be an array");
         }
         if (! isset($node['type']) || ! is_string($node['type'])) {
-            $this->error("{$path}: 节点缺少 type 字段");
+            $this->error("{$path}: node is missing its type field");
         }
 
         return match ($node['type']) {
@@ -501,7 +501,7 @@ class Compiler
             'table' => $this->compileTable($node, $path),
             'el' => $this->compileEl($node, $path),
             'component' => $this->compileComponent($node, $path),
-            default => $this->error("{$path}: 未知节点类型 \"{$node['type']}\""),
+            default => $this->error("{$path}: unknown node type \"{$node['type']}\""),
         };
     }
 
@@ -517,7 +517,7 @@ class Compiler
     {
         $level = $n['level'] ?? 1;
         if (! is_int($level) || $level < 1 || $level > 6) {
-            $this->error("{$path}: heading 的 level 必须是 1-6 的整数，收到 " . var_export($level, true));
+            $this->error("{$path}: heading level must be an integer from 1 to 6, got " . var_export($level, true));
         }
 
         $attrs = $this->forwardedAttrs($n, ['level', 'text'], $path, true);
@@ -545,15 +545,15 @@ class Compiler
         $when = $this->requireString($n, 'when', $path);
         $this->forwardedAttrs($n, ['when', 'then', 'else'], $path, false);   // if emits no tag
         if (! array_key_exists('then', $n)) {
-            $this->error("{$path}: if 缺少 then（节点树数组）");
+            $this->error("{$path}: if is missing then (a node tree array)");
         }
-        $then = $this->requireList($n['then'], $path . '.then', '节点树数组');
+        $then = $this->requireList($n['then'], $path . '.then', 'a node tree array');
 
         $cond = $this->compileCondition($when, $path);
 
         $out = "<?php if ({$cond}): ?>\n" . $this->compileNodes($then, $path . '.then');
         if (array_key_exists('else', $n)) {
-            $else = $this->requireList($n['else'], $path . '.else', '节点树数组');
+            $else = $this->requireList($n['else'], $path . '.else', 'a node tree array');
             $out .= "\n<?php else: ?>\n" . $this->compileNodes($else, $path . '.else');
         }
 
@@ -566,19 +566,19 @@ class Compiler
         $this->forwardedAttrs($n, ['items', 'as', 'index', 'body'], $path, false);   // each emits no tag
         $as = $n['as'] ?? 'item';
         if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
-            $this->error("{$path}: each 的 as 必须是合法变量名");
+            $this->error("{$path}: each as must be a valid variable name");
         }
 
         if (! array_key_exists('body', $n)) {
-            $this->error("{$path}: each 缺少 body（节点树数组）");
+            $this->error("{$path}: each is missing body (a node tree array)");
         }
-        $body = $this->requireList($n['body'], $path . '.body', '节点树数组');
+        $body = $this->requireList($n['body'], $path . '.body', 'a node tree array');
 
         $loop = "foreach ({$items} ?? [] as ";
         if (array_key_exists('index', $n)) {
             $index = $n['index'];
             if (! is_string($index) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $index)) {
-                $this->error("{$path}: each 的 index 必须是合法变量名");
+                $this->error("{$path}: each index must be a valid variable name");
             }
             $loop .= '$' . $index . ' => ';
         }
@@ -594,23 +594,23 @@ class Compiler
         // fault with the enum message, which names the wrong problem.
         $method = $n['method'] ?? 'post';
         if (! is_string($method)) {
-            $this->error("{$path}: method 必须是字符串 \"get\" 或 \"post\"，收到 " . gettype($method));
+            $this->error("{$path}: method must be the string \"get\" or \"post\", got " . gettype($method));
         }
         $method = $this->literal($method, $path, 'method');
         if ($method !== 'get' && $method !== 'post') {
-            $this->error("{$path}: method 必须是 \"get\" 或 \"post\"");
+            $this->error("{$path}: method must be \"get\" or \"post\"");
         }
         if (! array_key_exists('fields', $n)) {
-            $this->error("{$path}: form 缺少 fields（字段数组）");
+            $this->error("{$path}: form is missing fields (an array of fields)");
         }
-        $fields = $this->requireList($n['fields'], $path . '.fields', '字段数组');
+        $fields = $this->requireList($n['fields'], $path . '.fields', 'an array of fields');
 
         $attr = $this->forwardedAttrs($n, ['action', 'method', 'fields'], $path, true);
         $out = '<form action="' . $action . '" method="' . $method . '"' . $attr . '>';
         $lines = [];
         foreach ($fields as $i => $field) {
             if (! is_array($field)) {
-                $this->error("{$path}.fields[{$i}]: 字段必须是对象");
+                $this->error("{$path}.fields[{$i}]: field must be an array");
             }
             $lines[] = $this->compileField($field, $path . '.fields[' . $i . ']');
         }
@@ -639,31 +639,31 @@ class Compiler
         );
         $input = $n['input'] ?? 'text';
         if (! is_string($input) || ! in_array($input, self::INPUT_TYPES, true)) {
-            $this->error("{$path}: 非法的 input 类型 \"" . (is_string($input) ? $input : gettype($input)) . '"');
+            $this->error("{$path}: invalid input type \"" . (is_string($input) ? $input : gettype($input)) . '"');
         }
         if ($input === 'select' && array_key_exists('value', $n)) {
-            $this->error("{$path}: select 字段不支持 value 绑定（选中态绑定不在当前范围）");
+            $this->error("{$path}: select fields do not support value binding (selected-state binding is out of scope)");
         }
         if ($input !== 'select' && array_key_exists('options', $n)) {
-            $this->error("{$path}: options 仅用于 select 字段");
+            $this->error("{$path}: options is only for select fields");
         }
         // The `=== true` test below would silently ignore any other type, which
         // is the silent drop this compiler refuses everywhere else.
         if (array_key_exists('required', $n) && ! is_bool($n['required'])) {
-            $this->error("{$path}: required 必须是布尔值，收到 " . gettype($n['required']));
+            $this->error("{$path}: required must be a boolean, got " . gettype($n['required']));
         }
         $this->assertFieldScope($n, $input, $path);
 
         // A submit button takes its text from label; a bound value there would
         // be read, ignored and lost.
         if ($input === 'submit' && array_key_exists('value', $n)) {
-            $this->error("{$path}: submit 字段不支持 value 绑定，按钮文字请用 label");
+            $this->error("{$path}: submit fields do not support value binding; use label for the button text");
         }
 
         $required = ($n['required'] ?? false) === true;
         if ($required && ! in_array($input, self::REQUIRED_INPUTS, true)) {
-            $this->error("{$path}: required 仅用于 " . implode(' / ', self::REQUIRED_INPUTS)
-                . " 字段，当前 input 是 \"{$input}\"");
+            $this->error("{$path}: required is only for the " . implode(' / ', self::REQUIRED_INPUTS)
+                . " fields; the input here is \"{$input}\"");
         }
 
         if ($input === 'submit') {
@@ -708,7 +708,7 @@ class Compiler
         if ($input === 'textarea') {
             $rows = $n['rows'] ?? 4;
             if (! is_int($rows) || $rows < 1) {
-                $this->error("{$path}: textarea 的 rows 必须是正整数");
+                $this->error("{$path}: textarea rows must be a positive integer");
             }
             $content = $value !== '' ? $value : '';
 
@@ -719,7 +719,7 @@ class Compiler
         if ($input === 'select') {
             $options = $n['options'] ?? null;
             if (! is_array($options)) {
-                $this->error("{$path}: select 字段缺少 options 映射");
+                $this->error("{$path}: select field is missing an options map");
             }
             $out .= '  <select name="' . $name . '" id="' . $id . '"'
                 . ($required ? ' required' : '') . $extra . '>';
@@ -728,9 +728,9 @@ class Compiler
                 // Option text is a literal field, so it is a string or nothing —
                 // casting an array here would leak "Array to string conversion".
                 if (! is_string($optLabel)) {
-                    $this->error("{$path}: option \"{$optValue}\" 的文本必须是字符串，收到 " . gettype($optLabel));
+                    $this->error("{$path}: option \"{$optValue}\" text must be a string, got " . gettype($optLabel));
                 }
-                $optLabel = $this->literal($optLabel, $path, 'option 文本');
+                $optLabel = $this->literal($optLabel, $path, 'option text');
                 $out .= "\n    <option value=\"" . $optValue . '">' . $optLabel . '</option>';
             }
 
@@ -758,12 +758,12 @@ class Compiler
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
         $as = $n['as'] ?? 'row';
         if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
-            $this->error("{$path}: table 的 as 必须是合法变量名");
+            $this->error("{$path}: table as must be a valid variable name");
         }
         if (! array_key_exists('columns', $n)) {
-            $this->error("{$path}: table 缺少 columns（列数组）");
+            $this->error("{$path}: table is missing columns (an array of columns)");
         }
-        $columns = $this->requireList($n['columns'], $path . '.columns', '列数组');
+        $columns = $this->requireList($n['columns'], $path . '.columns', 'an array of columns');
         $empty = array_key_exists('empty', $n) ? $this->literal($this->requireString($n, 'empty', $path), $path, 'empty') : null;
         $attr = $this->forwardedAttrs($n, ['items', 'as', 'empty', 'columns'], $path, true);
 
@@ -772,7 +772,7 @@ class Compiler
         foreach ($columns as $i => $column) {
             $columnPath = $path . '.columns[' . $i . ']';
             if (! is_array($column)) {
-                $this->error("{$columnPath}: 列必须是对象");
+                $this->error("{$columnPath}: column must be an array");
             }
             $this->requireStructuralType($column, 'column', $columnPath);
             $label = $this->literal($this->requireString($column, 'label', $columnPath), $columnPath, 'label');
@@ -783,11 +783,11 @@ class Compiler
             $hasContent = array_key_exists('content', $column);
 
             if ($hasPop && $hasContent) {
-                $this->error($columnPath . ': 列同时指定 pop 与 content');
+                $this->error($columnPath . ': a column cannot specify both pop and content');
             }
 
             if (! $hasPop && ! $hasContent) {
-                $this->error($columnPath . ': 列缺少 pop 或 content');
+                $this->error($columnPath . ': a column needs either pop or content');
             }
 
             if ($hasPop) {
@@ -795,7 +795,7 @@ class Compiler
                 $rows[] = '<td' . $columnAttr . '>'
                     . $this->resolveValue($this->rowReference($reference, $as, $columnPath), $columnPath) . '</td>';
             } else {
-                $content = $this->requireList($column['content'], $columnPath . '.content', '节点树数组');
+                $content = $this->requireList($column['content'], $columnPath . '.content', 'a node tree array');
                 $rows[] = '<td' . $columnAttr . '>' . $this->compileNodes($content, $columnPath . '.content') . '</td>';
             }
         }
@@ -823,7 +823,7 @@ class Compiler
     {
         $tag = strtolower($this->literal($this->requireString($n, 'tag', $path), $path, 'tag'));
         if (! preg_match(self::TAG_PATTERN, $tag)) {
-            $this->error("{$path}: 非法的 tag \"{$tag}\"，需为小写 HTML 标签名");
+            $this->error("{$path}: invalid tag \"{$tag}\"; tag names must be lowercase HTML");
         }
 
         $attrs = $this->forwardedAttrs($n, ['tag', 'body'], $path, true);
@@ -833,7 +833,7 @@ class Compiler
         // node map — is a mistake and is named as one instead of being read as
         // "empty".
         $body = array_key_exists('body', $n)
-            ? $this->requireList($n['body'], $path . '.body', '节点树数组')
+            ? $this->requireList($n['body'], $path . '.body', 'a node tree array')
             : [];
         $inner = $this->compileNodes($body, $path . '.body');
 
@@ -851,16 +851,16 @@ class Compiler
             return "<?= \$this->component('" . $this->str($name) . "') ?>";
         }
 
-        $data = $this->requireMap($n['data'], $path, 'component 的 data 必须是「键 => 字符串」的映射');
+        $data = $this->requireMap($n['data'], $path, 'component data must be a map of key => string');
 
         $lines = [];
         foreach ($data as $key => $value) {
             // The key names a variable inside the component, so it is a literal
             // field: `{{ }}` there is not interpolated but emitted verbatim as
             // part of the PHP array key.
-            $key = $this->literal((string) $key, $path, 'data 键');
+            $key = $this->literal((string) $key, $path, 'data key');
             if (! is_string($value)) {
-                $this->error("{$path}: component data 的 \"{$key}\" 必须是字符串（值支持 {{ 路径 }} 插值）");
+                $this->error("{$path}: component data \"{$key}\" must be a string (values support {{ path }} interpolation)");
             }
             $lines[] = "    '" . $this->str($key) . "' => " . $this->interpolatePhp($value, $path . '.data.' . $key);
         }
@@ -934,7 +934,7 @@ class Compiler
     private function compilePath(string $path, string $where): string
     {
         if (! preg_match(self::PATH_PATTERN, $path)) {
-            $this->error("{$where}: 非法路径 \"{$path}\"，仅支持 a.b.c 形式的变量路径");
+            $this->error("{$where}: invalid path \"{$path}\"; only a.b.c variable paths are supported");
         }
 
         $segments = explode('.', $path);
@@ -969,13 +969,13 @@ class Compiler
     {
         $trimmed = trim($reference);
         if (! preg_match('/^\{\{\s*(.+?)\s*\}\}$/', $trimmed, $m)) {
-            $this->error("{$where}.pop: 请写成 {{ {$row}." . (trim($trimmed) === '' ? '字段' : trim($trimmed))
-                . " }} 形式；数据引用统一用 {{ }} 标记");
+            $this->error("{$where}.pop: write it as {{ {$row}." . (trim($trimmed) === '' ? 'field' : trim($trimmed))
+                . " }}; data references all use {{ }} markers");
         }
 
         $path = trim($m[1]);
         if (explode('.', $path)[0] !== $row) {
-            $this->error("{$where}.pop: 必须引用行变量 \"{$row}\"，收到 \"{$reference}\"");
+            $this->error("{$where}.pop: must reference the row variable \"{$row}\", got \"{$reference}\"");
         }
 
         return $path;
@@ -993,7 +993,7 @@ class Compiler
             return trim($m[1]);
         }
         if (str_contains($trimmed, '{{') || str_contains($trimmed, '}}')) {
-            $this->error("{$where}: {$field} 的插值符号未配对，请写 {{ path }}");
+            $this->error("{$where}: {$field} has unbalanced interpolation markers; write {{ path }}");
         }
 
         return $trimmed;
@@ -1006,7 +1006,7 @@ class Compiler
         // matches only the inner '{{ a }}' — leaving stray braces wrapped around
         // the compiled sugar in the output.
         if (str_contains($text, '{{{') || str_contains($text, '}}}')) {
-            $this->error("{$path}: 插值符号不能连续三个花括号（{{{ 或 }}}），请写 {{ path }}");
+            $this->error("{$path}: interpolation markers cannot run three braces ({{{ or }}}); write {{ path }}");
         }
 
         $open = substr_count($text, '{{');
@@ -1014,7 +1014,7 @@ class Compiler
             return;
         }
         if ($open !== substr_count($text, '}}')) {
-            $this->error("{$path}: 插值符号未配对（{{ 与 }} 数量不一致）");
+            $this->error("{$path}: unbalanced interpolation markers (mismatched {{ and }} counts)");
         }
     }
 
@@ -1023,8 +1023,9 @@ class Compiler
      * sections.<name> / content) and the field and column lists.
      *
      * is_array() alone is not enough. A bare node map is an array too, so it
-     * passes and only fails deeper — as "content[type]: 节点必须是对象" — blaming
-     * a node that was never the problem instead of the missing list wrapper.
+     * passes and only fails deeper — as "content[type]: node must be an array" —
+     * blaming a node that was never the problem instead of the missing list
+     * wrapper.
      * Both failures are named here, where the mistake actually is.
      *
      * @return list<mixed>
@@ -1032,10 +1033,10 @@ class Compiler
     private function requireList(mixed $value, string $where, string $expected): array
     {
         if (! is_array($value)) {
-            $this->error("{$where}: 必须是{$expected}，收到 " . gettype($value));
+            $this->error("{$where}: must be {$expected}, got " . gettype($value));
         }
         if (! array_is_list($value)) {
-            $this->error("{$where}: 必须是{$expected}（列表），当前是键值映射；请用 [ ] 包成列表");
+            $this->error("{$where}: must be {$expected} (a list), but got a key-value map; wrap it in [ ] to make a list");
         }
 
         return $value;
@@ -1051,17 +1052,17 @@ class Compiler
      * and there are no entries whose meaning could be misread.
      *
      * $expected carries the whole predicate so the message keeps naming the
-     * field, e.g. "page: sections 必须是 section 名到节点树的映射".
+     * field, e.g. "page: sections must be a map of section name to node tree".
      *
      * @return array<array-key, mixed>
      */
     private function requireMap(mixed $value, string $where, string $expected): array
     {
         if (! is_array($value)) {
-            $this->error("{$where}: {$expected}，收到 " . gettype($value));
+            $this->error("{$where}: {$expected}, got " . gettype($value));
         }
         if ($value !== [] && array_is_list($value)) {
-            $this->error("{$where}: {$expected}（键值映射），当前是列表");
+            $this->error("{$where}: {$expected} (a key-value map), but got a list");
         }
 
         return $value;
@@ -1070,7 +1071,7 @@ class Compiler
     private function requireString(array $n, string $key, string $path): string
     {
         if (! isset($n[$key]) || ! is_string($n[$key])) {
-            $this->error("{$path}: 缺少 string 字段 \"{$key}\"");
+            $this->error("{$path}: missing string field \"{$key}\"");
         }
 
         return $n[$key];
@@ -1088,7 +1089,7 @@ class Compiler
             return;
         }
         if ($n['type'] !== $expected) {
-            $this->error("{$path}: type 必须是 \"{$expected}\"（{$expected} 是内嵌结构，位置已决定类型）");
+            $this->error("{$path}: type must be \"{$expected}\" ({$expected} is a nested structure; its position decides the type)");
         }
     }
 
@@ -1105,8 +1106,8 @@ class Compiler
             if (! array_key_exists($field, $n) || in_array($input, $inputs, true)) {
                 continue;
             }
-            $this->error("{$path}: \"{$field}\" 仅用于 " . implode(' / ', $inputs)
-                . " 字段，当前 input 是 \"{$input}\"");
+            $this->error("{$path}: \"{$field}\" is only for the " . implode(' / ', $inputs)
+                . " fields; the input here is \"{$input}\"");
         }
     }
 
@@ -1117,7 +1118,7 @@ class Compiler
     private function literal(string $value, string $path, string $field): string
     {
         if (str_contains($value, '{{') || str_contains($value, '}}')) {
-            $this->error("{$path}: \"{$field}\" 是字面量字段，不支持 {{ }} 插值");
+            $this->error("{$path}: \"{$field}\" is a literal field and does not support {{ }} interpolation");
         }
 
         $this->assertNoTemplateMarker($value, $path, "\"{$field}\"");
@@ -1136,7 +1137,7 @@ class Compiler
     private function assertNoTemplateMarker(string $text, string $path, string $where): void
     {
         if (str_contains($text, '##')) {
-            $this->error("{$path}: {$where}是字面量，不允许出现 \"##\"（模板层语法）");
+            $this->error("{$path}: {$where} is a literal and may not contain \"##\" (template-level syntax)");
         }
     }
 

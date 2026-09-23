@@ -45,15 +45,15 @@ class RendererTest extends TestCase
 
         $html = $renderer->render([
             'body' => [
-                ['type' => 'text', 'text' => '## 说明 ##'],
+                ['type' => 'text', 'text' => '## Note ##'],
                 ['type' => 'text', 'text' => '### $user["name"] ###'],
-                ['type' => 'text', 'text' => '你好，{{ user.name }}'],
+                ['type' => 'text', 'text' => 'Hello, {{ user.name }}'],
             ],
         ], ['user' => ['name' => '<b>Alice</b>']]);
 
-        self::assertStringContainsString('## 说明 ##', $html);
+        self::assertStringContainsString('## Note ##', $html);
         self::assertStringContainsString('### $user["name"] ###', $html);
-        self::assertStringContainsString('你好，&lt;b&gt;Alice&lt;/b&gt;', $html);
+        self::assertStringContainsString('Hello, &lt;b&gt;Alice&lt;/b&gt;', $html);
         self::assertStringNotContainsString('<b>Alice</b>', $html);
     }
 
@@ -67,12 +67,12 @@ class RendererTest extends TestCase
 
         $html = $renderer->render([
             'body' => [
-                ['type' => 'heading', 'level' => 2, 'text' => '用户列表'],
-                ['type' => 'text', 'text' => '你好，{{ user.name }}'],
+                ['type' => 'heading', 'level' => 2, 'text' => 'User list'],
+                ['type' => 'text', 'text' => 'Hello, {{ user.name }}'],
             ],
         ], ['user' => ['name' => 'Alice']]);
 
-        self::assertSame("<h2>用户列表</h2>\n你好，Alice", $html);
+        self::assertSame("<h2>User list</h2>\nHello, Alice", $html);
     }
 
     public function testRendersLayoutWithSections(): void
@@ -84,13 +84,13 @@ class RendererTest extends TestCase
         );
 
         $html = $renderer->render([
-            'title' => '用户管理',
+            'title' => 'User admin',
             'layout' => 'layout/main',
             'sections' => [
                 'content' => [
                     ['type' => 'table', 'items' => 'users', 'as' => 'user', 'columns' => [
                         ['label' => 'ID', 'pop' => '{{ user.id }}'],
-                        ['label' => '姓名', 'pop' => '{{ user.name }}'],
+                        ['label' => 'Name', 'pop' => '{{ user.name }}'],
                     ]],
                 ],
             ],
@@ -99,7 +99,7 @@ class RendererTest extends TestCase
             ['id' => 2, 'name' => 'Bob'],
         ]]);
 
-        self::assertStringContainsString('<title>用户管理', $html);
+        self::assertStringContainsString('<title>User admin', $html);
         self::assertStringContainsString('</title>', $html);
         self::assertStringContainsString('<td>Alice</td>', $html);
         self::assertStringContainsString('<td>Bob</td>', $html);
@@ -165,8 +165,8 @@ class RendererTest extends TestCase
 
         self::assertSame(2, $renderer->clearCache());
         self::assertCount(0, glob($this->cacheDir . '/page_*.tpl.php') ?: []);
-        self::assertSame(0, $renderer->clearCache(), '重复清理应为空操作');
-        self::assertDirectoryExists($this->cacheDir, '清理只删派生页面，不删目录');
+        self::assertSame(0, $renderer->clearCache(), 'clearing twice is a no-op');
+        self::assertDirectoryExists($this->cacheDir, 'clearing removes derived pages, not the directory');
 
         self::assertSame('v1', $renderer->render(['body' => [['type' => 'text', 'text' => 'v1']]]));
         self::assertCount(1, glob($this->cacheDir . '/page_*.tpl.php') ?: []);
@@ -189,7 +189,7 @@ class RendererTest extends TestCase
         self::assertSame(1, $renderer->clearCache());
         self::assertFileExists($this->cacheDir . '/card.php');
         self::assertFileExists($this->cacheDir . '/layout/main.php');
-        self::assertFileExists($this->cacheDir . '/page_handwritten.php', '只按 page_*.tpl.php 精确匹配，不误删同名前缀的文件');
+        self::assertFileExists($this->cacheDir . '/page_handwritten.php', 'only exact page_*.tpl.php matches are removed');
     }
 
     public function testRendersComponentThroughTemplatePaths(): void
@@ -199,7 +199,7 @@ class RendererTest extends TestCase
         $renderer = new Renderer($tpl, new Compiler(), $this->cacheDir);
 
         $html = $renderer->render([
-            'body' => [['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}', 'body' => '简介']]],
+            'body' => [['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}', 'body' => 'About']]],
         ], ['user' => ['name' => 'Alice']]);
 
         self::assertStringContainsString('Alice', $html);

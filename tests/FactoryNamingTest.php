@@ -18,8 +18,9 @@ use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * The casing convention of §10: factories are all-caps, member methods are not, and
- * THEN / ELSE are the only uppercase members.
+ * The casing convention of §10: factories are all-caps, member methods mostly are not,
+ * and the only uppercase members are the ones that name a statement or node block:
+ * THEN / ELSE / BODY / AS / INDEX.
  *
  * PHP resolves method names case-insensitively, so `h5::TEXTAREA()` and `h5::textarea()`
  * are the same method and a lowercase call site cannot be rejected at runtime — even a
@@ -36,8 +37,9 @@ final class FactoryNamingTest extends TestCase
         'TEXTAREA', 'SELECT', 'TABLE', 'COL', 'COMPONENT', 'EL',
     ];
 
-    /** The only member methods allowed to be uppercase, because they name statements. */
-    private const UPPER_METHODS = ['ELSE', 'THEN'];
+    /** The only member methods allowed to be uppercase, because they name a statement
+     *  or a node block rather than an attribute or a value. */
+    private const UPPER_METHODS = ['AS', 'BODY', 'ELSE', 'INDEX', 'THEN'];
 
     /** `h5::class` is PHP's magic constant, not a call to a factory. */
     private const MAGIC = ['class'];
@@ -52,7 +54,7 @@ final class FactoryNamingTest extends TestCase
         $expected = self::FACTORIES;
         sort($expected);
 
-        $this->assertSame($expected, $declared, 'Html 的静态工厂应当正好是这 13 个，不多不少');
+        $this->assertSame($expected, $declared, 'Html declares exactly these 13 static factories and nothing else');
     }
 
     public function testEveryFactoryIsDeclaredInCaps(): void
@@ -65,12 +67,12 @@ final class FactoryNamingTest extends TestCase
             $this->assertSame(
                 $name,
                 $reflection->getMethod($name)->getName(),
-                "工厂必须以全大写声明: {$name}"
+                "factory names must be declared in all caps: {$name}"
             );
         }
     }
 
-    public function testThenAndElseAreTheOnlyUppercaseMemberMethods(): void
+    public function testOnlyStatementMembersAreUppercase(): void
     {
         $found = [];
         $classes = [Node::class, PlainNode::class, TagNode::class, FieldNode::class, InputNode::class];
@@ -87,7 +89,7 @@ final class FactoryNamingTest extends TestCase
         $found = array_keys($found);
         sort($found);
 
-        $this->assertSame(self::UPPER_METHODS, $found, '只有 THEN / ELSE 可以大写，其余成员方法一律小写');
+        $this->assertSame(self::UPPER_METHODS, $found, 'only statement members (THEN/ELSE/BODY/AS/INDEX) may be uppercase');
     }
 
     public function testSamplesWrittenWithTheFactoryStillWork(): void
@@ -96,8 +98,8 @@ final class FactoryNamingTest extends TestCase
         // method. Asserted so that the convention is known to be cosmetic, never a
         // behaviour the package depends on.
         $this->assertSame(
-            Html::textarea('bio')->label('简介')->toArray(),
-            Html::TEXTAREA('bio')->label('简介')->toArray()
+            Html::textarea('bio')->label('Bio')->toArray(),
+            Html::TEXTAREA('bio')->label('Bio')->toArray()
         );
         $this->assertSame(
             Html::if('users')->then([Html::text('x')])->toArray(),
@@ -108,6 +110,7 @@ final class FactoryNamingTest extends TestCase
     public function testDocsSpecExamplesAndTestsSpellTheFactoriesInCaps(): void
     {
         $pattern = '/h5::([A-Za-z_][A-Za-z0-9_]*)/';
+        $lowerStatements = '/->(then|else|body|as|index)\(/';
         $offenders = [];
 
         foreach ($this->sources() as $file => $content) {
@@ -120,7 +123,7 @@ final class FactoryNamingTest extends TestCase
                 }
             }
 
-            if (preg_match_all('/->(then|else)\(/', $content, $matches) !== false) {
+            if (preg_match_all($lowerStatements, $content, $matches) !== false) {
                 foreach ($matches[1] as $name) {
                     $offenders[] = "{$file}: ->{$name}(";
                 }
@@ -130,7 +133,8 @@ final class FactoryNamingTest extends TestCase
         $this->assertSame(
             [],
             $offenders,
-            "示例与文档里的工厂调用必须全大写，THEN / ELSE 是唯一的大写成员方法：\n" . implode("\n", $offenders)
+            "Whitelisted factories must be spelled in caps, and statement members must be uppercase "
+            . "(THEN/ELSE/BODY/AS/INDEX):\n" . implode("\n", $offenders)
         );
     }
 

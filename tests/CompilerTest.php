@@ -24,32 +24,32 @@ final class CompilerTest extends TestCase
 
     public function testTextLeavesLiteralsAloneAndInterpolatesPaths(): void
     {
-        $this->assertSame('你好', $this->compile(['body' => [['type' => 'text', 'text' => '你好']]]));
+        $this->assertSame('Hi', $this->compile(['body' => [['type' => 'text', 'text' => 'Hi']]]));
         $this->assertSame(
-            "你好，## \$user['name'] ?? '' ##",
-            $this->compile(['body' => [['type' => 'text', 'text' => '你好，{{ user.name }}']]])
+            "Hi, ## \$user['name'] ?? '' ##",
+            $this->compile(['body' => [['type' => 'text', 'text' => 'Hi, {{ user.name }}']]])
         );
     }
 
     public function testHeadingLevelDefaultsToOneAndIsValidated(): void
     {
-        $this->assertSame('<h1>标题</h1>', $this->compile(['body' => [['type' => 'heading', 'text' => '标题']]]));
-        $this->assertSame('<h2>标题</h2>', $this->compile(['body' => [['type' => 'heading', 'level' => 2, 'text' => '标题']]]));
+        $this->assertSame('<h1>Title</h1>', $this->compile(['body' => [['type' => 'heading', 'text' => 'Title']]]));
+        $this->assertSame('<h2>Title</h2>', $this->compile(['body' => [['type' => 'heading', 'level' => 2, 'text' => 'Title']]]));
         $this->expectError(
-            ['body' => [['type' => 'heading', 'level' => 7, 'text' => '标题']]],
-            'level 必须是 1-6 的整数'
+            ['body' => [['type' => 'heading', 'level' => 7, 'text' => 'Title']]],
+            'heading level must be an integer from 1 to 6'
         );
     }
 
     public function testLinkInterpolatesHrefAndText(): void
     {
         $this->assertSame(
-            '<a href="/x/## $user[\'id\'] ?? \'\' ##">去</a>',
-            $this->compile(['body' => [['type' => 'link', 'href' => '/x/{{ user.id }}', 'text' => '去']]])
+            '<a href="/x/## $user[\'id\'] ?? \'\' ##">Go</a>',
+            $this->compile(['body' => [['type' => 'link', 'href' => '/x/{{ user.id }}', 'text' => 'Go']]])
         );
         $this->assertSame(
-            '<a href="/x" target="_blank">去</a>',
-            $this->compile(['body' => [['type' => 'link', 'href' => '/x', 'text' => '去', 'target' => '_blank']]])
+            '<a href="/x" target="_blank">Go</a>',
+            $this->compile(['body' => [['type' => 'link', 'href' => '/x', 'text' => 'Go', 'target' => '_blank']]])
         );
     }
 
@@ -163,7 +163,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'el', 'tag' => 'div', 'shwo' => 'x', 'body' => []]]],
-            '未知属性 "shwo"'
+            'unknown attribute "shwo"'
         );
     }
 
@@ -171,7 +171,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'el', 'tag' => 'div', 'data-x' => ['nested' => 1], 'body' => []]]],
-            '值必须是标量'
+            'must have a scalar value'
         );
     }
 
@@ -179,7 +179,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'if', 'when' => 'a', 'class' => 'x', 'then' => [['type' => 'text', 'text' => 'A']]]]],
-            '节点 type: if 不输出标签'
+            'node type: if emits no tag'
         );
     }
 
@@ -202,13 +202,13 @@ final class CompilerTest extends TestCase
             'items' => 'users',
             'columns' => [
                 ['label' => 'ID', 'pop' => '{{ row.id }}'],
-                ['label' => '操作', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => '改']]],
+                ['label' => 'Actions', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => 'Edit']]],
             ],
         ]]]);
 
-        $this->assertStringContainsString('<th>ID</th><th>操作</th>', $out);
+        $this->assertStringContainsString('<th>ID</th><th>Actions</th>', $out);
         $this->assertStringContainsString("<td>## \$row['id'] ?? '' ##</td>", $out);
-        $this->assertStringContainsString('<a href="/u/## $row[\'id\'] ?? \'\' ##">改</a>', $out);
+        $this->assertStringContainsString('<a href="/u/## $row[\'id\'] ?? \'\' ##">Edit</a>', $out);
         $this->assertStringContainsString('foreach ($users ?? [] as $row)', $out);
     }
 
@@ -217,23 +217,23 @@ final class CompilerTest extends TestCase
         $out = $this->compile(['body' => [[
             'type' => 'table',
             'items' => 'users',
-            'empty' => '暂无数据',
+            'empty' => 'No data',
             'columns' => [['label' => 'ID', 'pop' => '{{ row.id }}']],
         ]]]);
 
         $this->assertStringContainsString('if (($users ?? []) === [])', $out);
-        $this->assertStringContainsString('<td colspan="1">暂无数据</td>', $out);
+        $this->assertStringContainsString('<td colspan="1">No data</td>', $out);
     }
 
     public function testColumnNeedsExactlyOneOfPopOrContent(): void
     {
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A']]]]],
-            '列缺少 pop 或 content'
+            'a column needs either pop or content'
         );
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}', 'content' => []]]]]],
-            '列同时指定 pop 与 content'
+            'a column cannot specify both pop and content'
         );
     }
 
@@ -243,11 +243,11 @@ final class CompilerTest extends TestCase
         // would mean row['user']['name'] instead of the page-level user.
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => 'a']]]]],
-            '请写成 {{ row.a }} 形式'
+            'write it as {{ row.a }}'
         );
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'pop' => '{{ user.name }}']]]]],
-            '必须引用行变量 "row"'
+            'must reference the row variable "row"'
         );
     }
 
@@ -255,7 +255,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'el', 'tag' => 'div', 'bind' => '{{ user.name }}', 'body' => []]]],
-            'bind 是浏览器端变量名，不支持 {{ }} 插值'
+            'bind is a browser-side variable name and does not support {{ }} interpolation'
         );
     }
 
@@ -264,7 +264,7 @@ final class CompilerTest extends TestCase
         $out = $this->compile(['body' => [
             ['type' => 'el', 'tag' => 'span', 'bind' => 'user.email', 'body' => []],
             ['type' => 'form', 'action' => '/s', 'fields' => [
-                ['name' => 'email', 'input' => 'text', 'label' => '邮箱', 'bind' => 'form.email'],
+                ['name' => 'email', 'input' => 'text', 'label' => 'Email', 'bind' => 'form.email'],
             ]],
         ]]);
 
@@ -277,7 +277,7 @@ final class CompilerTest extends TestCase
         // id defaults to name (which keeps HTML hooks and the DTO key aligned), but an
         // explicit id has to override it — not be emitted a second time.
         $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
-            ['name' => 'email', 'input' => 'text', 'label' => '邮箱', 'id' => 'userEmail'],
+            ['name' => 'email', 'input' => 'text', 'label' => 'Email', 'id' => 'userEmail'],
         ]]]]);
 
         self::assertStringContainsString('<label for="userEmail">', $out);
@@ -288,8 +288,8 @@ final class CompilerTest extends TestCase
     public function testColumnContentMustBeNodeTree(): void
     {
         $this->expectError(
-            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => '裸文本']]]]],
-            'content: 必须是节点树数组'
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => 'bare text']]]]],
+            'content: must be a node tree array'
         );
     }
 
@@ -297,12 +297,12 @@ final class CompilerTest extends TestCase
     {
         // A single node written without the list wrapper is an array, so an
         // is_array() guard lets it through and the failure surfaces later as
-        // "content[type]: 节点必须是对象" — a message that names the wrong fault.
+        // "content[type]: node must be an array" — a message that names the wrong fault.
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [
                 ['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']],
             ]]]],
-            'content: 必须是节点树数组（列表）'
+            'content: must be a node tree array (a list)'
         );
     }
 
@@ -312,24 +312,24 @@ final class CompilerTest extends TestCase
             'type' => 'form',
             'action' => '/save',
             'fields' => [
-                ['name' => 'n', 'label' => '姓名', 'input' => 'text', 'value' => 'user.name', 'required' => true],
-                ['name' => 'p', 'label' => '密码', 'input' => 'password'],
-                ['name' => 'b', 'label' => '简介', 'input' => 'textarea'],
-                ['name' => 's', 'label' => '角色', 'input' => 'select', 'options' => ['a' => '管理员']],
-                ['name' => 'c', 'label' => '启用', 'input' => 'checkbox', 'checked' => 'user.active'],
+                ['name' => 'n', 'label' => 'Name', 'input' => 'text', 'value' => 'user.name', 'required' => true],
+                ['name' => 'p', 'label' => 'Password', 'input' => 'password'],
+                ['name' => 'b', 'label' => 'Bio', 'input' => 'textarea'],
+                ['name' => 's', 'label' => 'Role', 'input' => 'select', 'options' => ['a' => 'Admin']],
+                ['name' => 'c', 'label' => 'Enabled', 'input' => 'checkbox', 'checked' => 'user.active'],
                 ['name' => 't', 'label' => 'TOKEN', 'input' => 'hidden', 'value' => 'form.csrf'],
-                ['name' => 'go', 'label' => '保存', 'input' => 'submit'],
+                ['name' => 'go', 'label' => 'Save', 'input' => 'submit'],
             ],
         ]]]);
 
         $this->assertStringContainsString('<form action="/save" method="post">', $out);
         $this->assertStringContainsString('value="## $user[\'name\'] ?? \'\' ##" required>', $out);
         $this->assertStringContainsString('<textarea name="b" id="b" rows="4">', $out);
-        $this->assertStringContainsString('<option value="a">管理员</option>', $out);
+        $this->assertStringContainsString('<option value="a">Admin</option>', $out);
         $this->assertStringContainsString("<?= (\$user['active'] ?? null) ? ' checked' : '' ?>", $out);
         // hidden has no label; submit carries its label as the button text
         $this->assertStringNotContainsString('<label for="t">', $out);
-        $this->assertStringContainsString('<input type="submit" value="保存">', $out);
+        $this->assertStringContainsString('<input type="submit" value="Save">', $out);
     }
 
     public function testFormMethodDefaultsToPostAndRejectsBadValues(): void
@@ -341,7 +341,7 @@ final class CompilerTest extends TestCase
 
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'method' => 'put', 'fields' => [['name' => 'a', 'label' => 'A']]]]],
-            'method 必须是 "get" 或 "post"'
+            'method must be "get" or "post"'
         );
     }
 
@@ -358,14 +358,14 @@ final class CompilerTest extends TestCase
 
         try {
             $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => [['name' => 'a', 'label' => 'A']]]]]);
-            $this->fail('应当编译失败');
+            $this->fail('should have failed to compile');
         } catch (CompileException $e) {
-            $this->assertStringContainsString('method 必须是字符串 "get" 或 "post"，收到 array', $e->getMessage());
+            $this->assertStringContainsString('method must be the string "get" or "post", got array', $e->getMessage());
         } finally {
             restore_error_handler();
         }
 
-        $this->assertSame([], $warnings, '编译期不应泄漏 PHP 警告');
+        $this->assertSame([], $warnings, 'the compiler must not leak PHP warnings');
     }
 
     public function testFormMethodRejectsNonStringScalars(): void
@@ -373,7 +373,7 @@ final class CompilerTest extends TestCase
         foreach ([true, 5] as $bad) {
             $this->expectError(
                 ['body' => [['type' => 'form', 'action' => '/s', 'method' => $bad, 'fields' => [['name' => 'a', 'label' => 'A']]]]],
-                'method 必须是字符串 "get" 或 "post"，收到 ' . gettype($bad)
+                'method must be the string "get" or "post", got ' . gettype($bad)
             );
         }
     }
@@ -382,13 +382,13 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]],
-            'required 必须是布尔值，收到 string'
+            'required must be a boolean, got string'
         );
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
                 ['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]],
             ]]]],
-            'option "a" 的文本必须是字符串，收到 array'
+            'option "a" text must be a string, got array'
         );
     }
 
@@ -398,36 +398,36 @@ final class CompilerTest extends TestCase
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
                 ['name' => 's', 'label' => 'S', 'input' => 'select', 'value' => 'a', 'options' => ['x' => 'X']],
             ]]]],
-            'select 字段不支持 value 绑定'
+            'select fields do not support value binding'
         );
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
                 ['name' => 's', 'label' => 'S', 'options' => ['x' => 'X']],
             ]]]],
-            'options 仅用于 select 字段'
+            'options is only for select fields'
         );
     }
 
     public function testPageRootFieldsAreTypeChecked(): void
     {
-        $this->expectError(['body' => '不是数组'], 'body: 必须是节点树数组，收到 string');
-        $this->expectError(['body' => ['type' => 'text', 'text' => 'x']], 'body: 必须是节点树数组（列表）');
-        $this->expectError(['layout' => ['a'], 'sections' => []], 'page: layout 必须是字符串，收到 array');
+        $this->expectError(['body' => 'not an array'], 'body: must be a node tree array, got string');
+        $this->expectError(['body' => ['type' => 'text', 'text' => 'x']], 'body: must be a node tree array (a list)');
+        $this->expectError(['layout' => ['a'], 'sections' => []], 'page: layout must be a string, got array');
         $this->expectError(
             ['title' => ['a'], 'layout' => 'layout/main', 'sections' => []],
-            'page: title 必须是字符串，收到 array'
+            'page: title must be a string, got array'
         );
         $this->expectError(
-            ['layout' => 'layout/main', 'sections' => '不是映射'],
-            'page: sections 必须是 section 名到节点树的映射，收到 string'
+            ['layout' => 'layout/main', 'sections' => 'not a map'],
+            'page: sections must be a map of section name to node tree, got string'
         );
         $this->expectError(
-            ['layout' => 'layout/main', 'sections' => ['content' => '不是树']],
-            'sections.content: 必须是节点树数组，收到 string'
+            ['layout' => 'layout/main', 'sections' => ['content' => 'not a tree']],
+            'sections.content: must be a node tree array, got string'
         );
         $this->expectError(
             ['layout' => 'layout/main', 'sections' => ['content' => ['type' => 'text', 'text' => 'x']]],
-            'sections.content: 必须是节点树数组（列表）'
+            'sections.content: must be a node tree array (a list)'
         );
     }
 
@@ -435,15 +435,15 @@ final class CompilerTest extends TestCase
     {
         $out = $this->compile([
             'layout' => 'layout/main',
-            'title' => '用户管理',
-            'sections' => ['content' => [['type' => 'text', 'text' => '主体']]],
+            'title' => 'User management',
+            'sections' => ['content' => [['type' => 'text', 'text' => 'Body']]],
         ]);
 
         $this->assertStringContainsString("\$this->extends('layout/main')", $out);
         $this->assertStringContainsString("\$this->start('title')", $out);
-        $this->assertStringContainsString('用户管理', $out);
+        $this->assertStringContainsString('User management', $out);
         $this->assertStringContainsString("\$this->start('content')", $out);
-        $this->assertStringContainsString('主体', $out);
+        $this->assertStringContainsString('Body', $out);
     }
 
     public function testStandalonePageIgnoresTitleAndWarns(): void
@@ -453,9 +453,9 @@ final class CompilerTest extends TestCase
             $warnings[] = $message;
         });
 
-        $out = $compiler->compile(['title' => '忽略', 'body' => [['type' => 'text', 'text' => '正文']]]);
+        $out = $compiler->compile(['title' => 'Ignored', 'body' => [['type' => 'text', 'text' => 'Content']]]);
 
-        $this->assertSame('正文', $out);
+        $this->assertSame('Content', $out);
         $this->assertCount(1, $warnings);
         $this->assertStringContainsString('title', $warnings[0]);
     }
@@ -464,23 +464,23 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['layout' => 'layout/main', 'body' => [['type' => 'text', 'text' => 'A']]],
-            '同时指定 layout 与 body 冲突'
+            'layout and body cannot be set together'
         );
     }
 
     public function testInterpolationEdgeCases(): void
     {
         $this->assertSame(
-            '前 ## $a ?? \'\' ## 后',
-            $this->compile(['body' => [['type' => 'text', 'text' => '前 {{ a }} 后']]])
+            'before ## $a ?? \'\' ## after',
+            $this->compile(['body' => [['type' => 'text', 'text' => 'before {{ a }} after']]])
         );
         $this->expectError(
             ['body' => [['type' => 'text', 'text' => '{{{ a }}}']]],
-            '插值符号不能连续三个花括号'
+            'cannot run three braces'
         );
         $this->expectError(
             ['body' => [['type' => 'text', 'text' => '{{ a }} }}']]],
-            '插值符号未配对'
+            'unbalanced interpolation markers'
         );
     }
 
@@ -488,7 +488,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'empty' => '{{ a }}', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}']]]]],
-            '不支持 {{ }} 插值'
+            'does not support {{ }} interpolation'
         );
     }
 
@@ -496,59 +496,59 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'sectoin', 'text' => 'x']]],
-            '未知节点类型 "sectoin"'
+            'unknown node type "sectoin"'
         );
     }
 
     public function testNodeMustBeArrayAndCarryType(): void
     {
-        $this->expectError(['body' => ['裸文本']], '节点必须是对象');
-        $this->expectError(['body' => [['text' => 'x']]], '节点缺少 type 字段');
+        $this->expectError(['body' => ['bare text']], 'node must be an array');
+        $this->expectError(['body' => [['text' => 'x']]], 'node is missing its type field');
     }
 
     public function testStructuralChildrenMustBeNodeLists(): void
     {
-        $this->expectError(['body' => [['type' => 'if', 'when' => 'a']]], 'if 缺少 then（节点树数组）');
+        $this->expectError(['body' => [['type' => 'if', 'when' => 'a']]], 'if is missing then (a node tree array)');
         $this->expectError(
             ['body' => [['type' => 'if', 'when' => 'a', 'then' => ['type' => 'text', 'text' => 'x']]]],
-            'then: 必须是节点树数组（列表）'
+            'then: must be a node tree array (a list)'
         );
         $this->expectError(
             ['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => 'x']]],
-            'else: 必须是节点树数组，收到 string'
+            'else: must be a node tree array, got string'
         );
-        $this->expectError(['body' => [['type' => 'each', 'items' => 'u']]], 'each 缺少 body（节点树数组）');
+        $this->expectError(['body' => [['type' => 'each', 'items' => 'u']]], 'each is missing body (a node tree array)');
         $this->expectError(
             ['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]],
-            'body: 必须是节点树数组（列表）'
+            'body: must be a node tree array (a list)'
         );
     }
 
     public function testFieldAndColumnListsMustBeLists(): void
     {
-        $this->expectError(['body' => [['type' => 'form', 'action' => '/s']]], 'form 缺少 fields（字段数组）');
+        $this->expectError(['body' => [['type' => 'form', 'action' => '/s']]], 'form is missing fields (an array of fields)');
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]],
-            'fields: 必须是字段数组（列表）'
+            'fields: must be an array of fields (a list)'
         );
-        $this->expectError(['body' => [['type' => 'table', 'items' => 'u']]], 'table 缺少 columns（列数组）');
+        $this->expectError(['body' => [['type' => 'table', 'items' => 'u']]], 'table is missing columns (an array of columns)');
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]],
-            'columns: 必须是列数组（列表）'
+            'columns: must be an array of columns (a list)'
         );
     }
 
     public function testElRequiresTagAndBody(): void
     {
-        $this->expectError(['body' => [['type' => 'el']]], '缺少 string 字段 "tag"');
+        $this->expectError(['body' => [['type' => 'el']]], 'missing string field "tag"');
         // an <el> may wrap nothing: it exists to carry attributes
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'div']]]));
-        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]], 'body: 必须是节点树数组，收到 string');
-        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => ['type' => 'text', 'text' => 'x']]]], 'body: 必须是节点树数组（列表）');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]], 'body: must be a node tree array, got string');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => ['type' => 'text', 'text' => 'x']]]], 'body: must be a node tree array (a list)');
         // Present but null is a mistake, not "no children" — an emptied key in a
         // mapping source lands here.
-        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]], 'body: 必须是节点树数组，收到 NULL');
-        $this->expectError(['body' => [['type' => 'el', 'tag' => '1div', 'body' => []]]], '非法的 tag');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]], 'body: must be a node tree array, got NULL');
+        $this->expectError(['body' => [['type' => 'el', 'tag' => '1div', 'body' => []]]], 'invalid tag');
         // uppercase is normalised, not rejected
         $this->assertSame('<div></div>', $this->compile(['body' => [['type' => 'el', 'tag' => 'DIV', 'body' => []]]]));
     }
@@ -557,21 +557,21 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'text', 'text' => '{{ a[b] }}']]],
-            '非法路径'
+            'invalid path'
         );
     }
 
     public function testSourceEntryPointsRejectTextOnTheBaseCompiler(): void
     {
         $this->expectException(CompileException::class);
-        $this->expectExceptionMessage('只接受数组页面定义');
+        $this->expectExceptionMessage('only accepts array page declarations');
         $this->compiler->compileSource('<page/>');
     }
 
     public function testCompileFileRejectsMissingFile(): void
     {
         $this->expectException(CompileException::class);
-        $this->expectExceptionMessage('页面文件不存在');
+        $this->expectExceptionMessage('page file not found');
         $this->compiler->compileFile('/nonexistent/page.xml');
     }
 
@@ -594,14 +594,14 @@ final class CompilerTest extends TestCase
 
         try {
             $this->compile($page);
-            $this->fail('应当编译失败');
+            $this->fail('should have failed to compile');
         } catch (CompileException) {
             // expected: a readable compile error
         } finally {
             restore_error_handler();
         }
 
-        $this->assertSame([], $warnings, '编译期不应泄漏 PHP 警告');
+        $this->assertSame([], $warnings, 'the compiler must not leak PHP warnings');
     }
 
     /** @return array<string, array{array<string, mixed>}> */
@@ -610,31 +610,31 @@ final class CompilerTest extends TestCase
         $fields = [['name' => 'a', 'label' => 'A']];
 
         return [
-            'layout 非字符串' => [['layout' => ['a'], 'sections' => []]],
-            'title 非字符串' => [['title' => ['a'], 'layout' => 'layout/main', 'sections' => []]],
-            'sections 非映射' => [['layout' => 'layout/main', 'sections' => 'x']],
-            'sections 值为空' => [['layout' => 'layout/main', 'sections' => ['c' => null]]],
-            'body 非数组' => [['body' => 'x']],
-            'body 是单个节点映射' => [['body' => ['type' => 'text', 'text' => 'x']]],
-            'then 非数组' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => 'x']]]],
-            'else 是映射' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => ['type' => 'text', 'text' => 'x']]]]],
-            'each body 是映射' => [['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]]],
-            'el body 非数组' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]]],
-            'el body 是 null' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]]],
-            'fields 是映射' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]]],
-            'method 是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => $fields]]]],
-            'required 是字符串' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]]],
-            'option 文本是数组' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]]]]]]],
-            'columns 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]]],
-            'column content 是映射' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']]]]]]],
-            'sections 是列表' => [['layout' => 'layout/main', 'sections' => [['type' => 'text', 'text' => 'x']]]],
-            'component data 键写插值' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['{{ a }}' => 'x']]]]],
-            'component data 是列表' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['x', 'y']]]]],
-            'select 上写 placeholder' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'placeholder' => 'p', 'options' => ['a' => 'A']]]]]]],
-            'text 上写 checked' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'checked' => 'a.b']]]]]],
-            'text 上写 rows' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'rows' => 4]]]]]],
-            'submit 上写 value' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'submit', 'value' => 'a.b']]]]]],
-            'hidden 上写 required' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'hidden', 'required' => true]]]]]],
+            'layout not a string' => [['layout' => ['a'], 'sections' => []]],
+            'title not a string' => [['title' => ['a'], 'layout' => 'layout/main', 'sections' => []]],
+            'sections not a map' => [['layout' => 'layout/main', 'sections' => 'x']],
+            'sections value empty' => [['layout' => 'layout/main', 'sections' => ['c' => null]]],
+            'body not an array' => [['body' => 'x']],
+            'body a single node map' => [['body' => ['type' => 'text', 'text' => 'x']]],
+            'then not an array' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => 'x']]]],
+            'else a map' => [['body' => [['type' => 'if', 'when' => 'a', 'then' => [], 'else' => ['type' => 'text', 'text' => 'x']]]]],
+            'each body a map' => [['body' => [['type' => 'each', 'items' => 'u', 'body' => ['type' => 'text', 'text' => 'x']]]]],
+            'el body not an array' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => 'x']]]],
+            'el body null' => [['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]]],
+            'fields a map' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name' => 'a']]]]],
+            'method an array' => [['body' => [['type' => 'form', 'action' => '/s', 'method' => ['post'], 'fields' => $fields]]]],
+            'required a string' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'required' => 'true']]]]]],
+            'option text an array' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'options' => ['a' => ['x']]]]]]]],
+            'columns a map' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['label' => 'A']]]]],
+            'column content a map' => [['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'content' => ['type' => 'text', 'text' => 'x']]]]]]],
+            'sections a list' => [['layout' => 'layout/main', 'sections' => [['type' => 'text', 'text' => 'x']]]],
+            'component data key interpolates' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['{{ a }}' => 'x']]]]],
+            'component data a list' => [['body' => [['type' => 'component', 'name' => 'card', 'data' => ['x', 'y']]]]],
+            'placeholder on select' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 's', 'label' => 'S', 'input' => 'select', 'placeholder' => 'p', 'options' => ['a' => 'A']]]]]]],
+            'checked on text' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'checked' => 'a.b']]]]]],
+            'rows on text' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'text', 'rows' => 4]]]]]],
+            'value on submit' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'submit', 'value' => 'a.b']]]]]],
+            'required on hidden' => [['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'hidden', 'required' => true]]]]]],
         ];
     }
 
@@ -642,7 +642,7 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['{{ user.id }}' => 'x']]]],
-            '"data 键" 是字面量字段，不支持 {{ }} 插值'
+            '"data key" is a literal field and does not support {{ }} interpolation'
         );
 
         // A literal key still compiles, and the value beside it still interpolates.
@@ -661,23 +661,23 @@ final class CompilerTest extends TestCase
 
         $this->expectError(
             $form(['input' => 'select', 'placeholder' => 'p', 'options' => ['x' => 'X']] + $base),
-            '"placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select"'
+            '"placeholder" is only for the text / password / email / number fields; the input here is "select"'
         );
         $this->expectError(
             $form(['input' => 'text', 'checked' => 'user.ok'] + $base),
-            '"checked" 仅用于 checkbox 字段，当前 input 是 "text"'
+            '"checked" is only for the checkbox fields; the input here is "text"'
         );
         $this->expectError(
             $form(['input' => 'text', 'rows' => 4] + $base),
-            '"rows" 仅用于 textarea 字段，当前 input 是 "text"'
+            '"rows" is only for the textarea fields; the input here is "text"'
         );
         $this->expectError(
             $form(['input' => 'submit', 'value' => 'user.label'] + $base),
-            'submit 字段不支持 value 绑定'
+            'submit fields do not support value binding'
         );
         $this->expectError(
             $form(['input' => 'hidden', 'required' => true] + $base),
-            'required 仅用于 text / password / email / number / textarea / select / checkbox 字段'
+            'required is only for the text / password / email / number / textarea / select / checkbox fields'
         );
     }
 
@@ -698,11 +698,11 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['layout' => 'layout/main', 'sections' => [['type' => 'text', 'text' => 'x']]],
-            'page: sections 必须是 section 名到节点树的映射（键值映射），当前是列表'
+            'page: sections must be a map of section name to node tree (a key-value map), but got a list'
         );
         $this->expectError(
             ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['x', 'y']]]],
-            'component 的 data 必须是「键 => 字符串」的映射（键值映射），当前是列表'
+            'component data must be a map of key => string (a key-value map), but got a list'
         );
 
         // An empty array is an empty mapping too, so it stays legal.
@@ -714,9 +714,9 @@ final class CompilerTest extends TestCase
 
     public function testRequiredPathsAreReportedWhenMissing(): void
     {
-        $this->expectError(['body' => [['type' => 'if', 'then' => []]]], '缺少 string 字段 "when"');
-        $this->expectError(['body' => [['type' => 'each', 'body' => []]]], '缺少 string 字段 "items"');
-        $this->expectError(['body' => [['type' => 'table', 'columns' => []]]], '缺少 string 字段 "items"');
+        $this->expectError(['body' => [['type' => 'if', 'then' => []]]], 'missing string field "when"');
+        $this->expectError(['body' => [['type' => 'each', 'body' => []]]], 'missing string field "items"');
+        $this->expectError(['body' => [['type' => 'table', 'columns' => []]]], 'missing string field "items"');
     }
 
     public function testHyphenFormOfColonDirectiveIsRejected(): void
@@ -725,7 +725,7 @@ final class CompilerTest extends TestCase
         // hyphen form and the directive would silently do nothing.
         $this->expectError(
             ['body' => [['type' => 'el', 'tag' => 'div', 'x-on-click' => 'open = !open']]],
-            '请写 "x-on:click" 或 "@click"'
+            'write "x-on:click" or "@click"'
         );
     }
 
@@ -733,11 +733,11 @@ final class CompilerTest extends TestCase
     {
         $this->expectError(
             ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'type' => 'column']]]]],
-            'type 必须是 "field"'
+            'type must be "field"'
         );
         $this->expectError(
             ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['label' => 'A', 'bind' => 'id', 'type' => 'field']]]]],
-            'type 必须是 "column"'
+            'type must be "column"'
         );
     }
 
@@ -749,25 +749,25 @@ final class CompilerTest extends TestCase
         $compiler = new Compiler();
 
         $cases = [
-            'text' => ['body' => [['type' => 'text', 'text' => '## 说明 ##']]],
+            'text' => ['body' => [['type' => 'text', 'text' => '## note ##']]],
             'attribute value' => ['body' => [['type' => 'el', 'tag' => 'div', 'class' => 'a-## b', 'body' => []]]],
             'component value' => ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['title' => '## x ##']]]],
         ];
 
         foreach ($cases as $name => $page) {
-            self::assertStringContainsString('\##', $compiler->compile($page), "[{$name}] 未按模板层语法转义");
+            self::assertStringContainsString('\##', $compiler->compile($page), "[{$name}] was not escaped for the template layer");
         }
 
         // A single hash needs no escape and stays untouched.
-        self::assertStringContainsString('# 一级标题', $compiler->compile(['body' => [['type' => 'text', 'text' => '# 一级标题']]]));
+        self::assertStringContainsString('# heading', $compiler->compile(['body' => [['type' => 'text', 'text' => '# heading']]]));
     }
 
     public function testLiteralFieldsRejectTemplateMarkers(): void
     {
         // Literal fields are emitted verbatim, so there is nothing to escape: reject.
         $this->expectError(
-            ['body' => [['type' => 'form', 'action' => '/x', 'fields' => [['name' => 'a', 'input' => 'text', 'label' => '## 姓名 ##']]]]],
-            '是字面量，不允许出现 "##"'
+            ['body' => [['type' => 'form', 'action' => '/x', 'fields' => [['name' => 'a', 'input' => 'text', 'label' => '## Name ##']]]]],
+            'is a literal and may not contain "##"'
         );
     }
 
@@ -786,7 +786,7 @@ final class CompilerTest extends TestCase
     {
         try {
             $this->compile($page);
-            $this->fail('应当编译失败: ' . $needle);
+            $this->fail('should have failed to compile: ' . $needle);
         } catch (CompileException $e) {
             $this->assertStringContainsString($needle, $e->getMessage());
         }

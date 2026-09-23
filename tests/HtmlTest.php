@@ -43,71 +43,71 @@ final class HtmlTest extends TestCase
     public function testEveryFactoryNormalizesToTheDocumentedArray(): void
     {
         $cases = [
-            'text' => [h5::TEXT('你好，{{ user.name }}'), ['type' => 'text', 'text' => '你好，{{ user.name }}']],
-            'heading' => [h5::HEADING(2)->text('用户列表'), ['type' => 'heading', 'level' => 2, 'text' => '用户列表']],
-            'heading default level' => [h5::HEADING()->text('标题'), ['type' => 'heading', 'level' => 1, 'text' => '标题']],
+            'text' => [h5::TEXT('Hello, {{ user.name }}'), ['type' => 'text', 'text' => 'Hello, {{ user.name }}']],
+            'heading' => [h5::HEADING(2)->text('User list'), ['type' => 'heading', 'level' => 2, 'text' => 'User list']],
+            'heading default level' => [h5::HEADING()->text('Title'), ['type' => 'heading', 'level' => 1, 'text' => 'Title']],
             'heading with attributes' => [
-                h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title'),
-                ['type' => 'heading', 'level' => 2, 'text' => '用户列表', 'id' => 'usersTitle', 'class' => 'page-title'],
+                h5::HEADING(2)->text('User list')->id('usersTitle')->class('page-title'),
+                ['type' => 'heading', 'level' => 2, 'text' => 'User list', 'id' => 'usersTitle', 'class' => 'page-title'],
             ],
             'link' => [
-                h5::LINK('/users/1')->text('详情')->target('_blank'),
-                ['type' => 'link', 'href' => '/users/1', 'text' => '详情', 'target' => '_blank'],
+                h5::LINK('/users/1')->text('Details')->target('_blank'),
+                ['type' => 'link', 'href' => '/users/1', 'text' => 'Details', 'target' => '_blank'],
             ],
             'if' => [
-                h5::IF('user.loggedIn')->THEN([h5::TEXT('欢迎回来')]),
-                ['type' => 'if', 'when' => 'user.loggedIn', 'then' => [['type' => 'text', 'text' => '欢迎回来']]],
+                h5::IF('user.loggedIn')->THEN([h5::TEXT('Welcome back')]),
+                ['type' => 'if', 'when' => 'user.loggedIn', 'then' => [['type' => 'text', 'text' => 'Welcome back']]],
             ],
             'if else' => [
-                h5::IF('!user.hidden')->THEN([h5::TEXT('可见')])->ELSE([h5::TEXT('已隐藏')]),
-                ['type' => 'if', 'when' => '!user.hidden', 'then' => [['type' => 'text', 'text' => '可见']], 'else' => [['type' => 'text', 'text' => '已隐藏']]],
+                h5::IF('!user.hidden')->THEN([h5::TEXT('Visible')])->ELSE([h5::TEXT('Hidden')]),
+                ['type' => 'if', 'when' => '!user.hidden', 'then' => [['type' => 'text', 'text' => 'Visible']], 'else' => [['type' => 'text', 'text' => 'Hidden']]],
             ],
             'each' => [
-                h5::EACH('users')->body([h5::TEXT('{{ item.name }}')])->as('user')->index('i'),
+                h5::EACH('users')->BODY([h5::TEXT('{{ item.name }}')])->AS('user')->INDEX('i'),
                 ['type' => 'each', 'items' => 'users', 'body' => [['type' => 'text', 'text' => '{{ item.name }}']], 'as' => 'user', 'index' => 'i'],
             ],
             'each loop header in the constructor' => [
-                h5::EACH('users', as: 'user', index: 'i')->body([h5::TEXT('{{ i }}. {{ user.name }}')]),
+                h5::EACH('users', as: 'user', index: 'i')->BODY([h5::TEXT('{{ i }}. {{ user.name }}')]),
                 ['type' => 'each', 'items' => 'users', 'as' => 'user', 'index' => 'i', 'body' => [['type' => 'text', 'text' => '{{ i }}. {{ user.name }}']]],
             ],
             'form' => [
-                h5::FORM('/users/save')->fields([h5::INPUT('name')->label('姓名')])->method('post'),
-                ['type' => 'form', 'action' => '/users/save', 'fields' => [['type' => 'field', 'name' => 'name', 'input' => 'text', 'label' => '姓名']], 'method' => 'post'],
+                h5::FORM('/users/save')->fields([h5::INPUT('name')->label('Name')])->method('post'),
+                ['type' => 'form', 'action' => '/users/save', 'fields' => [['type' => 'field', 'name' => 'name', 'input' => 'text', 'label' => 'Name']], 'method' => 'post'],
             ],
             'input' => [
-                h5::INPUT('name')->label('姓名')->value('user.name')->required(),
-                ['type' => 'field', 'name' => 'name', 'input' => 'text', 'label' => '姓名', 'value' => 'user.name', 'required' => true],
+                h5::INPUT('name')->label('Name')->value('user.name')->required(),
+                ['type' => 'field', 'name' => 'name', 'input' => 'text', 'label' => 'Name', 'value' => 'user.name', 'required' => true],
             ],
             'input with type' => [
-                h5::INPUT('email')->label('邮箱')->type('email')->placeholder('name@example.com'),
-                ['type' => 'field', 'name' => 'email', 'input' => 'email', 'label' => '邮箱', 'placeholder' => 'name@example.com'],
+                h5::INPUT('email')->label('Email')->type('email')->placeholder('name@example.com'),
+                ['type' => 'field', 'name' => 'email', 'input' => 'email', 'label' => 'Email', 'placeholder' => 'name@example.com'],
             ],
             'input checkbox' => [
-                h5::INPUT('active')->label('启用')->type('checkbox')->checked('user.active'),
-                ['type' => 'field', 'name' => 'active', 'input' => 'checkbox', 'label' => '启用', 'checked' => 'user.active'],
+                h5::INPUT('active')->label('Enabled')->type('checkbox')->checked('user.active'),
+                ['type' => 'field', 'name' => 'active', 'input' => 'checkbox', 'label' => 'Enabled', 'checked' => 'user.active'],
             ],
             'textarea' => [
-                h5::TEXTAREA('bio')->label('简介')->rows(5),
-                ['type' => 'field', 'name' => 'bio', 'input' => 'textarea', 'label' => '简介', 'rows' => 5],
+                h5::TEXTAREA('bio')->label('Bio')->rows(5),
+                ['type' => 'field', 'name' => 'bio', 'input' => 'textarea', 'label' => 'Bio', 'rows' => 5],
             ],
             'select' => [
-                h5::SELECT('role')->label('角色')->options(['admin' => '管理员']),
-                ['type' => 'field', 'name' => 'role', 'input' => 'select', 'label' => '角色', 'options' => ['admin' => '管理员']],
+                h5::SELECT('role')->label('Role')->options(['admin' => 'Admin']),
+                ['type' => 'field', 'name' => 'role', 'input' => 'select', 'label' => 'Role', 'options' => ['admin' => 'Admin']],
             ],
             'table' => [
                 h5::TABLE('users')->columns([
                     h5::COL('ID')->pop('{{ row.id }}'),
-                    h5::COL('操作')->content([h5::LINK('/u/{{ row.id }}')->text('编辑')]),
-                ])->empty('暂无数据'),
+                    h5::COL('Actions')->content([h5::LINK('/u/{{ row.id }}')->text('Edit')]),
+                ])->empty('No data'),
                 ['type' => 'table', 'items' => 'users', 'columns' => [
                     ['type' => 'column', 'label' => 'ID', 'pop' => '{{ row.id }}'],
-                    ['type' => 'column', 'label' => '操作', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => '编辑']]],
-                ], 'empty' => '暂无数据'],
+                    ['type' => 'column', 'label' => 'Actions', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => 'Edit']]],
+                ], 'empty' => 'No data'],
             ],
             'table row variable in the constructor' => [
-                h5::TABLE('users', as: 'user')->columns([h5::COL('姓名')->pop('{{ user.name }}')]),
+                h5::TABLE('users', as: 'user')->columns([h5::COL('Name')->pop('{{ user.name }}')]),
                 ['type' => 'table', 'items' => 'users', 'as' => 'user', 'columns' => [
-                    ['type' => 'column', 'label' => '姓名', 'pop' => '{{ user.name }}'],
+                    ['type' => 'column', 'label' => 'Name', 'pop' => '{{ user.name }}'],
                 ]],
             ],
             'component' => [
@@ -115,35 +115,35 @@ final class HtmlTest extends TestCase
                 ['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}']],
             ],
             'el' => [
-                h5::EL('div')->class('card')->body([h5::TEXT('正文')]),
-                ['type' => 'el', 'tag' => 'div', 'class' => 'card', 'body' => [['type' => 'text', 'text' => '正文']]],
+                h5::EL('div')->class('card')->BODY([h5::TEXT('Content')]),
+                ['type' => 'el', 'tag' => 'div', 'class' => 'card', 'body' => [['type' => 'text', 'text' => 'Content']]],
             ],
             'el with directives' => [
-                h5::EL('button')->attr('x-data', '{ open: false }')->on('click', 'open = !open')->body([h5::TEXT('切换')]),
-                ['type' => 'el', 'tag' => 'button', 'x-data' => '{ open: false }', '@click' => 'open = !open', 'body' => [['type' => 'text', 'text' => '切换']]],
+                h5::EL('button')->attr('x-data', '{ open: false }')->on('click', 'open = !open')->BODY([h5::TEXT('Toggle')]),
+                ['type' => 'el', 'tag' => 'button', 'x-data' => '{ open: false }', '@click' => 'open = !open', 'body' => [['type' => 'text', 'text' => 'Toggle']]],
             ],
             'bind (browser side)' => [
-                h5::EL('span')->bind('user.email')->body([]),
+                h5::EL('span')->bind('user.email')->BODY([]),
                 ['type' => 'el', 'tag' => 'span', 'bind' => 'user.email', 'body' => []],
             ],
             'pop and bind together' => [
-                h5::INPUT('email')->label('邮箱')->popAndBind('{{ user.email }}'),
-                ['type' => 'field', 'name' => 'email', 'input' => 'text', 'label' => '邮箱', 'value' => '{{ user.email }}', 'bind' => 'user.email'],
+                h5::INPUT('email')->label('Email')->popAndBind('{{ user.email }}'),
+                ['type' => 'field', 'name' => 'email', 'input' => 'text', 'label' => 'Email', 'value' => '{{ user.email }}', 'bind' => 'user.email'],
             ],
             'popAndBind with a framework spelling' => [
-                h5::INPUT('email')->label('邮箱')->popAndBind('{{ user.email }}', 'x-model'),
-                ['type' => 'field', 'name' => 'email', 'input' => 'text', 'label' => '邮箱', 'value' => '{{ user.email }}', 'x-model' => 'user.email'],
+                h5::INPUT('email')->label('Email')->popAndBind('{{ user.email }}', 'x-model'),
+                ['type' => 'field', 'name' => 'email', 'input' => 'text', 'label' => 'Email', 'value' => '{{ user.email }}', 'x-model' => 'user.email'],
             ],
         ];
 
         $compiler = new Compiler();
 
         foreach ($cases as $name => [$node, $expected]) {
-            self::assertSame($expected, $node->toArray(), "[{$name}] 归一后的数组与文档不符");
+            self::assertSame($expected, $node->toArray(), "[{$name}] normalized array differs from the documented shape");
             self::assertSame(
                 $compiler->compile($this->pageFor($expected)),
                 $compiler->compile($this->pageFor($node)),
-                "[{$name}] 经工厂编译的产物与手写数组不一致"
+                "[{$name}] factory output differs from hand-written array output"
             );
         }
     }
@@ -175,8 +175,8 @@ final class HtmlTest extends TestCase
             'layout' => 'layout/main',
             'sections' => [
                 'content' => [
-                    h5::EACH('users')->body([
-                        h5::EL('li')->class('item')->body([h5::TEXT('{{ user.name }}')]),
+                    h5::EACH('users')->BODY([
+                        h5::EL('li')->class('item')->BODY([h5::TEXT('{{ user.name }}')]),
                     ]),
                 ],
             ],
@@ -206,12 +206,12 @@ final class HtmlTest extends TestCase
 
         $html = $renderer->render([
             'body' => [
-                h5::HEADING(2)->text('用户列表'),
-                h5::TEXT('你好，{{ user.name }}'),
+                h5::HEADING(2)->text('User list'),
+                h5::TEXT('Hello, {{ user.name }}'),
             ],
         ], ['user' => ['name' => 'Alice']]);
 
-        self::assertSame("<h2>用户列表</h2>\n你好，Alice", $html);
+        self::assertSame("<h2>User list</h2>\nHello, Alice", $html);
     }
 
     public function testValidationStillComesFromTheCompiler(): void
@@ -221,16 +221,16 @@ final class HtmlTest extends TestCase
         // The factory checks nothing about the node vocabulary: an unknown attribute and
         // an out-of-range level both fail in the compiler, with the node path attached.
         foreach ([
-            'unknown attribute' => [h5::HEADING(2)->text('x')->attr('levl', 2), '未知属性 "levl"'],
+            'unknown attribute' => [h5::HEADING(2)->text('x')->attr('levl', 2), 'unknown attribute "levl"'],
             'level out of range' => [h5::HEADING(7)->text('x'), 'level'],
             'missing required field' => [h5::HEADING(2), 'text'],
         ] as $name => [$node, $needle]) {
             try {
                 $compiler->compile(['body' => [$node]]);
-                self::fail("[{$name}] 应抛出 CompileException");
+                self::fail("[{$name}] expected CompileException to be thrown");
             } catch (CompileException $e) {
-                self::assertStringContainsString($needle, $e->getMessage(), "[{$name}] 错误信息不符");
-                self::assertStringContainsString('body[0]', $e->getMessage(), "[{$name}] 错误信息应带节点路径");
+                self::assertStringContainsString($needle, $e->getMessage(), "[{$name}] error message mismatch");
+                self::assertStringContainsString('body[0]', $e->getMessage(), "[{$name}] error message should include the node path");
             }
         }
     }
@@ -242,7 +242,7 @@ final class HtmlTest extends TestCase
         $html = (new Renderer(new Template(__DIR__ . '/fixtures/views'), new Compiler(), $this->cacheDir))
             ->render([
                 'body' => [['type' => 'form', 'action' => '/s', 'fields' => [
-                    h5::INPUT('email')->label('邮箱')->popAndBind('{{ user.email }}'),
+                    h5::INPUT('email')->label('Email')->popAndBind('{{ user.email }}'),
                 ]]],
             ], ['user' => ['email' => 'a@b.c']]);
 
@@ -253,7 +253,7 @@ final class HtmlTest extends TestCase
     public function testSettingTheSameFieldTwiceThrows(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('字段重复设置: text');
+        $this->expectExceptionMessage('field already set: text');
 
         h5::HEADING(2)->text('a')->text('b');
     }
@@ -261,7 +261,7 @@ final class HtmlTest extends TestCase
     public function testSettingTheSameAttributeTwiceThrows(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('字段重复设置: class');
+        $this->expectExceptionMessage('field already set: class');
 
         h5::EL('div')->class('a')->class('b');
     }
@@ -269,7 +269,7 @@ final class HtmlTest extends TestCase
     public function testSettingTheControlTwiceThrows(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('控件重复设置: 已经是 email');
+        $this->expectExceptionMessage('control already set: email');
 
         h5::INPUT('email')->type('email')->type('text');
     }
@@ -308,17 +308,17 @@ final class HtmlTest extends TestCase
     {
         self::assertSame(
             h5::EACH('users', as: 'user', index: 'i')->toArray(),
-            h5::EACH('users')->as('user')->index('i')->toArray()
+            h5::EACH('users')->AS('user')->INDEX('i')->toArray()
         );
         self::assertSame(
             h5::TABLE('users', as: 'user')->toArray(),
-            h5::TABLE('users')->as('user')->toArray()
+            h5::TABLE('users')->AS('user')->toArray()
         );
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('字段重复设置: as');
+        $this->expectExceptionMessage('field already set: as');
 
-        h5::EACH('users', as: 'user')->as('member');
+        h5::EACH('users', as: 'user')->AS('member');
     }
 
     public function testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument(): void
@@ -330,7 +330,7 @@ final class HtmlTest extends TestCase
             $names = array_map(static fn (ReflectionParameter $p): string => $p->getName(), $parameters);
 
             if (! isset($loopHeader[$method->getName()])) {
-                self::assertCount(1, $names, $method->getName() . ' 只应收一个参数');
+                self::assertCount(1, $names, $method->getName() . ' accepts exactly one argument');
 
                 continue;
             }
@@ -338,9 +338,9 @@ final class HtmlTest extends TestCase
             self::assertSame($loopHeader[$method->getName()], $names);
             // required first, header after it: nothing to count, and no named argument
             // can ever end up in front of a positional one
-            self::assertFalse($parameters[0]->isOptional(), $method->getName() . ' 的第一个参数必填');
+            self::assertFalse($parameters[0]->isOptional(), $method->getName() . ' first argument must be required');
             foreach (array_slice($parameters, 1) as $optional) {
-                self::assertTrue($optional->isOptional(), $method->getName() . ' 的循环头参数必须可选');
+                self::assertTrue($optional->isOptional(), $method->getName() . ' loop-header argument must be optional');
             }
         }
     }

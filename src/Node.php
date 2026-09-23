@@ -24,8 +24,10 @@ namespace MiGears\Pages;
  *   `class`, `id`, `style`);
  * - fields with no HTML counterpart keep a name that matches the component (`body`,
  *   `as`, `index`, `columns`, `empty`, `pop`, `content`, `data`);
- * - the two control-flow branches are spelled like the nodes they hang off (`THEN`,
- *   `ELSE`) instead of like attributes, because they name statements, not attributes;
+ * - a member that names a statement or a node block — not an attribute, and not a
+ *   value — is spelled in caps like the node it hangs off: `THEN`, `ELSE`, `BODY`,
+ *   `AS`, `INDEX`. Those name structure rather than an attribute; the value and
+ *   attribute methods (`label`, `value`, `pop`, ...) stay lowercase;
  * - `pop` is the server-side half (PHP renders data into the page) while `bind` is the
  *   browser-side half (the framework's binding attribute); `popAndBind` is the two
  *   combined for the common case where both sides use the same name.
@@ -98,17 +100,20 @@ abstract class Node
         return $this->fill('else', $nodes);
     }
 
-    final public function body(array $nodes): static
+    /** Uppercase because it names a node block, not an attribute. */
+    final public function BODY(array $nodes): static
     {
         return $this->fill('body', $nodes);
     }
 
-    final public function as(string $variable): static
+    /** Uppercase because it names the loop's row statement, not an attribute. */
+    final public function AS(string $variable): static
     {
         return $this->fill('as', $variable);
     }
 
-    final public function index(string $variable): static
+    /** Uppercase because it names the loop's index statement, not an attribute. */
+    final public function INDEX(string $variable): static
     {
         return $this->fill('index', $variable);
     }
@@ -192,7 +197,7 @@ abstract class Node
     final protected function fill(string $field, mixed $value): static
     {
         if (array_key_exists($field, $this->node)) {
-            throw new \LogicException('字段重复设置: ' . $field);
+            throw new \LogicException('field already set: ' . $field);
         }
 
         $this->node[$field] = $value;
