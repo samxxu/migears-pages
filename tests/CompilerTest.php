@@ -771,6 +771,142 @@ final class CompilerTest extends TestCase
         );
     }
 
+    public function testEmptyComponentDataCompilesToTheSameCallAsNoDataAtAll(): void
+    {
+        // An empty map has no entries to pass, so both spellings mean the same
+        // thing. Emitting the array form for the empty case would produce
+        // `component('c', [ , ])` — invalid PHP that still counted as a successful
+        // compile and only failed once the page was rendered.
+        $noArgument = "<?= \$this->component('c') ?>";
+
+        self::assertSame($noArgument, $this->compile(['body' => [['type' => 'component', 'name' => 'c']]]));
+        self::assertSame($noArgument, $this->compile(['body' => [['type' => 'component', 'name' => 'c', 'data' => []]]]));
+        self::assertSame(
+            "<?= \$this->component('c', [\n    'title' => 'T',\n]) ?>",
+            $this->compile(['body' => [['type' => 'component', 'name' => 'c', 'data' => ['title' => 'T']]]])
+        );
+    }
+
+    public function testCompileFileAndCompileToFileRoundTripThroughAFrontend(): void
+    {
+        // The base compiler has no source syntax of its own, so reading a file only
+        // means something for a frontend — the stub below stands in for one.
+        $dir = self::makeTempDir();
+
+        try {
+            $source = $dir . '/users.page.stub';
+            file_put_contents($source, 'Hello');
+
+            $frontend = new StubFrontend();
+            self::assertSame('Hello', $frontend->compileFile($source));
+
+            $target = $frontend->compileToFile($source);
+            self::assertSame($dir . '/users.tpl.php', $target);
+            self::assertSame('Hello', file_get_contents($target));
+        } finally {
+            self::removeDir($dir);
+        }
+    }
+
+    public function testCompileToFileCreatesTheOutputDirectory(): void
+    {
+        $dir = self::makeTempDir();
+
+        try {
+            $source = $dir . '/users.page.stub';
+            file_put_contents($source, 'Hello');
+
+            $target = (new StubFrontend())->compileToFile($source, $dir . '/deep/nested');
+
+            self::assertSame($dir . '/deep/nested/users.tpl.php', $target);
+            self::assertFileExists($target);
+            self::assertFileDoesNotExist($dir . '/users.tpl.php');
+        } finally {
+            self::removeDir($dir);
+        }
+    }
+
+    public function testComponentDataValuesMustBeStrings(): void
+    {
+        // Values are interpolated into a PHP array literal, so a nested structure
+        // has no representation there and is named instead of being cast.
+        $this->expectError(
+            ['body' => [['type' => 'component', 'name' => 'c', 'data' => ['title' => ['nested' => 'x']]]]],
+            'must be a string (values support {{ path }} interpolation)'
+        );
+    }
+
+    public function testValueWithUnbalancedInterpolationMarkersIsRejected(): void
+    {
+        $field = ['name' => 'a', 'label' => 'A', 'value' => '{{ x'];
+
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [$field]]]],
+            'has unbalanced interpolation markers'
+        );
+    }
+
+    public function testCompileFileReportsAFileItCannotRead(): void
+    {
+        $dir = self::makeTempDir();
+        $source = $dir . '/unreadable.page.stub';
+        file_put_contents($source, 'Hello');
+        chmod($source, 0o000);
+
+        try {
+            if (is_readable($source)) {
+                self::markTestSkipped('file permissions are not enforced on this filesystem');
+            }
+
+            $this->expectException(CompileException::class);
+            $this->expectExceptionMessage('cannot read page file');
+
+            (new StubFrontend())->compileFile($source);
+        } finally {
+            chmod($source, 0o644);
+            self::removeDir($dir);
+        }
+    }
+
+    public function testCompileToFileReportsAnOutputDirectoryItCannotCreate(): void
+    {
+        $dir = self::makeTempDir();
+
+        try {
+            $source = $dir . '/a.page.stub';
+            file_put_contents($source, 'Hello');
+            file_put_contents($dir . '/blocker', 'not a directory');
+
+            $this->expectException(CompileException::class);
+            $this->expectExceptionMessage('cannot create output directory');
+
+            // mkdir('blocker/nested') cannot succeed while 'blocker' is a file.
+            (new StubFrontend())->compileToFile($source, $dir . '/blocker/nested');
+        } finally {
+            self::removeDir($dir);
+        }
+    }
+
+    public function testCompileToFileReportsAFileItCannotWrite(): void
+    {
+        $dir = self::makeTempDir();
+
+        try {
+            $source = $dir . '/a.page.stub';
+            file_put_contents($source, 'Hello');
+            // A directory where the template should land: the write cannot succeed,
+            // and reporting the target anyway would be a success that never happened.
+            mkdir($dir . '/a.tpl.php');
+
+            $this->expectException(CompileException::class);
+            $this->expectExceptionMessage('cannot write page file');
+
+            (new StubFrontend())->compileToFile($source);
+        } finally {
+            self::removeDir($dir);
+        }
+    }
+
     /**
      * @param array<string, mixed> $page
      */
@@ -790,5 +926,39 @@ final class CompilerTest extends TestCase
         } catch (CompileException $e) {
             $this->assertStringContainsString($needle, $e->getMessage());
         }
+    }
+
+    private static function makeTempDir(): string
+    {
+        $dir = sys_get_temp_dir() . '/migears-pages-' . bin2hex(random_bytes(6));
+        mkdir($dir, 0755, true);
+
+        return $dir;
+    }
+
+    private static function removeDir(string $dir): void
+    {
+        foreach (scandir($dir) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $path = $dir . '/' . $entry;
+            is_dir($path) ? self::removeDir($path) : unlink($path);
+        }
+
+        rmdir($dir);
+    }
+}
+
+/**
+ * A stand-in frontend. The base compiler has no source syntax of its own, so
+ * compileFile() / compileToFile() are only meaningful for a subclass — this one
+ * reads the file's trimmed text as the page's only node.
+ */
+final class StubFrontend extends Compiler
+{
+    protected function parse(string $source): array
+    {
+        return ['body' => [['type' => 'text', 'text' => trim($source)]]];
     }
 }

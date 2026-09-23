@@ -162,7 +162,7 @@ class Compiler
             throw $this->newException("page file not found: {$path}");
         }
 
-        $source = file_get_contents($path);
+        $source = @file_get_contents($path);
         if ($source === false) {
             throw $this->newException("cannot read page file: {$path}");
         }
@@ -177,11 +177,17 @@ class Compiler
         $base = preg_replace('/\.page\.[a-z0-9]+$/i', '', basename($sourcePath)) ?? basename($sourcePath);
         $target = rtrim($dir, '/\\') . '/' . $base . '.tpl.php';
 
-        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+        // Silenced and then named: the PHP warnings these raise say nothing about
+        // the page, and the failure below is the one that explains the problem.
+        if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
             throw $this->newException("cannot create output directory: {$dir}");
         }
 
-        file_put_contents($target, $compiled, LOCK_EX);
+        // A write that fails silently would leave compileToFile() reporting a
+        // target that was never written — the reported success this module refuses.
+        if (@file_put_contents($target, $compiled, LOCK_EX) === false) {
+            throw $this->newException("cannot write page file: {$target}");
+        }
 
         return $target;
     }
@@ -852,6 +858,14 @@ class Compiler
         }
 
         $data = $this->requireMap($n['data'], $path, 'component data must be a map of key => string');
+
+        // An empty map carries no entries, so it compiles to exactly the same
+        // call as an absent one. Emitting the array form here would produce
+        // `$this->component('c', [ , ])` — invalid PHP that nonetheless counts
+        // as a successful compile and only blows up when the page is rendered.
+        if ($data === []) {
+            return "<?= \$this->component('" . $this->str($name) . "') ?>";
+        }
 
         $lines = [];
         foreach ($data as $key => $value) {

@@ -282,7 +282,7 @@ Compiled output:
 ['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}', 'body' => 'About']]
 ```
 
-`name` is required (literal, the template name); `data` is an optional mapping whose keys are literals and values support `{{ path }}` interpolation (compiled as PHP-context concatenation, not pre-escaped); values must be strings. Compiles to:
+`name` is required (literal, the template name); `data` is an optional mapping whose keys are literals and values support `{{ path }}` interpolation (compiled as PHP-context concatenation, not pre-escaped); values must be strings. An empty mapping carries no entries, so it compiles to the same no-argument call as omitting `data` altogether. Compiles to:
 
 ```php
 <?= $this->component('card', [
@@ -354,7 +354,7 @@ Frontend packages extend `MiGears\Pages\Compiler` and only implement parsing and
 | `nodeRef` / `containerRef` / `explicitAttrRef` | `(string): string` | the wording for node/container/explicit-attribute in error messages |
 | `COLON_ONLY_DIRECTIVES` | `array<string, list<string>>` | the hyphen-form interception table (defaults to Alpine's three directives) |
 
-The base class also provides the public entry points: `compile(array $page)`, `compileSource(string $source)` (goes through `parse()`), `compileFile(string $path)`, `compileToFile(string $sourcePath, ?string $outputDir)` (`xxx.page.*` → `xxx.tpl.php`).
+The base class also provides the public entry points: `compile(array $page)`, `compileSource(string $source)` (goes through `parse()`), `compileFile(string $path)`, `compileToFile(string $sourcePath, ?string $outputDir)` (`xxx.page.*` → `xxx.tpl.php`). The file helpers name their own failures — a missing or unreadable source, an output directory that cannot be created, a target that cannot be written — instead of letting a PHP warning through and then reporting a file that was never written.
 
 ## 9. Renderer facade
 
@@ -810,7 +810,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 ['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ user.name }}', 'body' => '简介']]
 ```
 
-`name` 必填（字面量，即模板名）；`data` 可选映射，键为字面量，值支持 `{{ path }}` 插值（PHP 上下文拼接编译，不预转义），值必须为字符串。编译为：
+`name` 必填（字面量，即模板名）；`data` 可选映射，键为字面量，值支持 `{{ path }}` 插值（PHP 上下文拼接编译，不预转义），值必须为字符串。空映射没有任何条目，因此与完全省略 `data` 编译为同一个不带参的调用。编译为：
 
 ```php
 <?= $this->component('card', [
@@ -882,7 +882,7 @@ PHP 上下文绝不能输出 `## ##` 糖——它会被 TemplateCompiler 二次�
 | `nodeRef` / `containerRef` / `explicitAttrRef` | `(string): string` | 错误信息中节点/容器/显式属性的措辞 |
 | `COLON_ONLY_DIRECTIVES` | `array<string, list<string>>` | 连字符定向拦截表（默认 Alpine 三个指令） |
 
-基类还提供公共入口：`compile(array $page)`、`compileSource(string $source)`（走 `parse()`）、`compileFile(string $path)`、`compileToFile(string $sourcePath, ?string $outputDir)`（`xxx.page.*` → `xxx.tpl.php`）。
+基类还提供公共入口：`compile(array $page)`、`compileSource(string $source)`（走 `parse()`）、`compileFile(string $path)`、`compileToFile(string $sourcePath, ?string $outputDir)`（`xxx.page.*` → `xxx.tpl.php`）。文件相关入口自行命名失败原因——源文件不存在或不可读、输出目录无法创建、目标文件无法写入——而不是放行 PHP 原生警告、再报告一个根本没写出来的文件。
 
 ## 9. Renderer 门面
 
