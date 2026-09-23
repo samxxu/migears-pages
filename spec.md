@@ -20,6 +20,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 - 属性透传：前端框架指令白名单与定向纠错
 - 前端集成点：`parse()` 与拼写钩子（§8）
 - `Renderer` 门面：数组 DSL 一步渲染 HTML（§9）
+- `Html` 工厂：用户级语法，归一后产出与前端解析结果相同的数组 IR（§10）
 
 ### 2.2 范围外（明确不做）
 
@@ -100,7 +101,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
    - `@event`——Alpine / Vue 的事件简写
    - 任何含冒号的指令名：`x-on:click`、`x-bind:href`、`v-on:click`、`wire:click`、`on:click`、`:href`
    - 前缀：`x-`、`v-`、`hx-`、`data-`
-   - 常用 HTML 钩子：`class`、`id`、`style`
+   - 常用 HTML 钩子：`class`、`id`、`style`，以及 `bind`（前端框架的绑定属性，值是浏览器端变量名）
 3. **其余一律编译错误**——未知键视为拼写错误，绝不静默丢弃。
 
 **定向拦截**：`x-on-*` / `x-bind-*` / `x-transition-*` 在 Alpine 中不存在（Alpine 一律用冒号）。由于 `x-` 前缀本会放行，这类拼写会被静默透传、编译成功而指令失效——因此单独拦截并给出建议（提示改写 `x-on:click` 或 `@click`）。
@@ -217,10 +218,12 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `name` | string 字面量 | 是 | 字段名（`name` / `id` 属性） |
+| `name` | string 字面量 | 是 | 字段名（`name` 属性）；同时是 `id` 与 `label` 的 `for` 的默认值 |
+| `id` | string 字面量 | 否 | 默认等于 `name`；显式给出时覆盖它，并同时驱动 `label` 的 `for`（只输出一次，不再默认输出） |
+| `bind` | JS 变量名/路径 | 否 | 前端框架的绑定属性，输出 `bind="user.email"`；值是浏览器端名字，写 `{{ }}` 即编译错误 |
 | `label` | string 字面量 | 是 | 标签文本；`submit` 类型时为按钮文字 |
 | `input` | enum | 否 | 见下，默认 `text` |
-| `value` | path | 否 | 绑定值，编译为 `value="## $path ?? '' ##"`；不支持 `submit`（按钮文字用 `label`） |
+| `value` | path | 否 | 绑定值，编译为 `value="## $path ?? '' ##"`；可写成 `{{ user.name }}`（推荐，数据更显眼）；不支持 `submit`（按钮文字用 `label`） |
 | `required` | bool | 否 | 默认 false；在支持该属性的 input 上输出 `required`，`hidden` / `submit` 上写 `true` 属编译错误 |
 | `placeholder` | string | 否 | 仅 text/password/email/number，支持插值；其他 input 上属编译错误 |
 | `options` | array | 仅 select | `['admin' => '管理员']` 映射，value 与文本均为字面量 |
@@ -249,7 +252,9 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 `items` 必填路径；`as` 默认 `row`；`empty` 可选（字面量）；`columns` 必填数组。
 
-**column**：`label` 必填（字面量）；`bind`（相对行变量的路径，如 `'id'` → `row.id`）与 `content`（节点树，行变量作用域）**二选一必填**，同时提供即编译错误。
+**column**：`label` 必填（字面量）；`pop`（服务端要渲染进单元格的数据引用，写成 `'{{ row.id }}'`）与 `content`（节点树，行变量作用域）**二选一必填**，同时提供即编译错误。`pop` 的值必须带 `{{ }}` 且首段等于该表格的 `as` 变量（默认 `row`）——不带花括号的裸路径、或引用了别的变量，都编译错误。
+
+> 词汇约定：本模块**只用 `pop` 指代「PHP 把数据渲染进页面」**，不用 `bind` 指代自己的概念；`bind` 专指前端框架的绑定属性（浏览器端）。两者合用时写法与 `popAndBind` 见 §10。
 
 编译为：
 
@@ -365,12 +370,55 @@ echo $renderer->render($page, $data);
 - 两次渲染同一声明时命中缓存文件，只做一次磁盘写入。
 - 缓存**只增不减**：声明一变就写新文件，旧文件不自动清理。`clearCache()` 删除本类写出的 `page_*.tpl.php` 并返回删除数量（重复调用返回 0），缓存目录本身保留，页面在下次 `render()` 时重新编译回填；清理只按该命名精确匹配，因此共享该目录的手写模板、外来文件与模板编译器产物都不受影响。模板编译器自身的产物归 `Template` 管理，不在本 API 范围内——要一次性重置两处，整体删除缓存目录仍然安全。
 
-## 10. 错误处理
+## 10. 用户级语法：Html 工厂
+
+`MiGears\Pages\Html` 是给页面作者用的语法：一个节点一个工厂，工厂名与它输出的 HTML 对齐，其余字段用同名成员方法补齐。
+
+```php
+use MiGears\Pages\Html as h5;
+
+h5::heading(2)->text('用户列表')->id('usersTitle')->class('page-title')
+h5::table('users')->columns([h5::col('姓名')->pop('{{ row.name }}')])->empty('暂无数据')
+h5::form('/users/save')->fields([h5::input('email')->label('邮箱')->type('email')])
+```
+
+**它只是语法糖，落地形态仍是数组。** 工厂返回 `Node` 对象，`Compiler::compile()` 在入口把整棵树递归归一成 §4 的数组 IR；此后与手写数组、XML、YAML 走同一条编译路径——同一套节点词表、同一套校验、同一套错误文案。前端包 `parse()` 产出的仍是数组，本层对它们没有任何影响。
+
+**工厂只命名字段，不校验。** 未知属性、越界 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器在编译期抛带路径的 `CompileException`；本层不复制校验规则，也不更改错误措辞。
+
+工厂各收一个参数，即「离开它这个节点就不成立」的值：
+
+| 工厂 | 参数 | 归一后的节点 |
+|------|------|--------------|
+| `h5::text` | `text` | `type: text` |
+| `h5::heading` | `level`（默认 1） | `type: heading` |
+| `h5::link` | `href` | `type: link` |
+| `h5::if` | `when` | `type: if` |
+| `h5::each` | `items` | `type: each` |
+| `h5::form` | `action` | `type: form` |
+| `h5::input` | `name` | `type: field` + `input: text` |
+| `h5::textarea` | `name` | `type: field` + `input: textarea` |
+| `h5::select` | `name` | `type: field` + `input: select` |
+| `h5::table` | `items` | `type: table` |
+| `h5::col` | `label` | `type: column` |
+| `h5::component` | `name` | `type: component` |
+| `h5::el` | `tag` | `type: el` |
+
+成员方法按归属分三组：
+
+- **基类方法**（字段名即 §5 / §6 的字段名）：`text`、`target`、`then`、`else`、`body`、`as`、`index`、`fields`、`method`、`columns`、`empty`、`data`、`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`、`pop`、`content`。用错节点（如 `heading` 上调 `label()`）不在此层拦截，由编译器的未知键检查点名。
+- **属性方法**：只出现在输出标签的节点（`heading`、`link`、`form`、`table`、`el`，以及表单控件）上——`class`、`id`、`style`、`attr(name, value)`、`on(event, expression)`（输出 `@event`）、`bind(name)`（输出 `bind="name"`，值是浏览器端变量名）。不输出标签的节点没有这些方法，写出来是 PHP 层的 `undefined method`。
+- **控件方法**：只有 `h5::input` 有 `type(control)`（`type` 是 `<input>` 独有的属性）。`h5::textarea` 与 `h5::select` 的控件由工厂一次定下。三者都有 `popAndBind(reference, attribute = 'bind')`：`pop` 与 `bind` 合用的 shortcut，把字段的 `value` 与该属性（默认 `bind`，可传 `x-model` / `v-model`）写成同一个数据引用，用于前后端变量同名的常见情形；两侧不一致时分开写 `value()` 与 `bind()`。
+- **服务端与浏览器端的分工**：`pop` / `value` 走服务端（编译成 `## $var['key'] ?? '' ##`，渲染时求值），`bind` 只产出属性、名字交给浏览器（值必须是 JS 变量名/路径，写 `{{ }}` 即编译错误）。
+
+**重复设置立即抛 `\LogicException`**，沿用「不静默覆盖」的立场：同一字段写两次（`->text('a')->text('b')`）、同一属性写两次（`->class('a')->class('b')`）、`h5::input(...)->type('a')->type('b')` 都直接失败。`Node::toArray()` 可取回数组形态，便于在编译前检查。
+
+## 11. 错误处理
 
 所有错误抛 `CompileException`（继承 `\RuntimeException`），信息带节点路径，格式：
 
 ```
-sections.content[2].columns[2]: 列同时指定 bind 与 content
+sections.content[2].columns[2]: 列同时指定 pop 与 content
 ```
 
 错误分类：
@@ -382,12 +430,13 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 | 未知节点 | type 不在词表 | 未知节点类型 "foo" |
 | 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | if 缺 when；level 为 7 |
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
-| 上下文错误 | bind/content 互斥等 | column 同时含 bind 与 content |
+| 上下文错误 | pop/content 互斥等 | column 同时含 pop 与 content；pop 未引用行变量 |
 | 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout 必须是字符串，收到 array |
 | method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
 | 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
 | 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required 必须是布尔值，收到 string |
 | 字面量错误 | 字面量字段写了 `{{ }}` | "empty" 是字面量字段，不支持 {{ }} 插值 |
+| 模板层标记 | 字面量字段（`label` / `name` / `tag` / `empty` / option 等）里出现 `##`——这些字段原样写入产物，没有可转义的位置 | body[0].fields[0]: "label" 是字面量，不允许出现 "##"（模板层语法） |
 | 映射形态错误 | `sections` / `component.data` 写成列表 | page: sections 必须是 section 名到节点树的映射（键值映射），当前是列表 |
 | 字段使用范围错误 | `placeholder` / `checked` / `rows` / `value` / `required` 用在不支持的 input 上 | "placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select" |
 | 内嵌结构类型错误 | field/column 的 type 与位置不符 | type 必须是 "field" |
@@ -400,28 +449,35 @@ sections.content[2].columns[2]: 列同时指定 bind 与 content
 
 失败即中止（fail-fast）：首个错误抛出，`CompileException` 携带从根到节点的路径。
 
-## 11. 模块结构
+## 12. 模块结构
 
 ```
 migears-pages/
 ├── composer.json            name: migears/pages; require: php ^8.1, migears/template ^2.0
-├── README.md                双语（中英）、架构、安装、快速开始、数组 DSL 参考、前端包、错误处理、测试说明
+├── README.md                双语（中英）、架构、安装、快速开始、用户语法（h5 工厂）、数组 DSL 参考、自定义组件、前端包、错误处理、测试说明
 ├── LICENSE
 ├── src/
-│   ├── Compiler.php         编译器（核心，约 1050 行）
+│   ├── Compiler.php         编译器（核心）
 │   ├── Renderer.php         一步渲染门面（约 80 行）
+│   ├── Html.php             用户级语法：节点工厂（§10）
+│   ├── Node.php             节点基类：字段方法、数组归一、重复设置守卫
+│   ├── PlainNode.php        不输出标签的节点
+│   ├── TagNode.php          输出标签的节点（属性方法：class / id / style / attr / on / bind）
+│   ├── FieldNode.php        表单控件：可被服务端填值的位置（popAndBind）
+│   ├── InputNode.php        `<input>` 字段（`type` 方法）
 │   └── Exception/
 │       └── CompileException.php
 └── tests/
     ├── CompilerTest.php     节点编译、校验、插值、透传断言
     ├── RendererTest.php     经 migears/template 完整渲染验证
+    ├── HtmlTest.php         Html 工厂：归一结果与手写数组逐字节一致
     └── fixtures/
         └── views/           渲染测试用布局
 ```
 
 composer 依赖说明：运行期执行的是生成的模板，依赖 migears/template，故设为 `require`。解析扩展（ext-yaml、SimpleXML）由前端包各自声明，本包不感知。
 
-## 12. 测试计划（TDD）
+## 13. 测试计划（TDD）
 
 单元测试以数组页面定义驱动，断言编译产物与期望 `.tpl.php` 完全一致（或含指定片段）。
 
@@ -432,7 +488,9 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 条件 | if then / then+else / `!` 取反 / when 缺失报错 |
 | 循环 | each 基础 / index / 嵌套 / items 缺失报错 |
 | 表单 | 各 input 枚举 / select options / checkbox checked / submit / 非法枚举 / select 缺 options / options 用在不支持的 input / method 非字符串（array、bool、int）报类型错误且不泄漏 PHP 警告 / required 非布尔 / option 文本非字符串 / placeholder、checked、rows、value、required 越界报错 / required 在 select、textarea、checkbox 上输出 |
-| 表格 | bind 列 / content 列 / empty / as 默认与自定义 / bind+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
+| 表格 | pop 列（`{{ row.x }}`）/ content 列 / empty / as 默认与自定义 / 行变量校验（裸路径、别的变量报错）/ pop+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
+| bind | 任意标签与字段可输出 `bind="js.name"`；值含 `{{ }}` 或不是 JS 名字时报错；`popAndBind` 同时写出 value 与 bind（含 `x-model` 拼写） |
+| 字段 id | `id` 默认等于 `name`（label 的 `for` 同值）；显式 `id` 覆盖它且只输出一次 |
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
 | 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
@@ -441,6 +499,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |
 | 内嵌结构 | `type: field` / `type: column` 写对可通过，写成另一种即报错 |
 | 字面量 | `field.label`、`table.empty`、`option`、`component.data` 的键等字面量字段写 `{{ }}` 报错 |
+| 模板层标记 | 文本、属性值、组件值里出现 `##` 时按模板层语法转义（产物含 `\##`），渲染后原样输出且不被当作表达式（Renderer 端到端断言 `## 说明 ##` 与 `### $user["name"] ###`）；字面量字段里出现 `##` 报错并带路径；单个 `#` 不需转义 |
 | 透传 | Alpine / Vue / htmx / Livewire 指令与 `class`/`id`/`style` 透传；`@click` 原样；值转义；值内插值；标量归一（整数/布尔/空值）；重复属性报错 |
 | 透传误用 | 未知键报错；无标签节点承载属性报错；页面根未知字段报错 |
 | el | 带 body / 空 body / 缺 tag 报错 / 非法 tag 报错 / body 写成 null 报错 |
@@ -448,8 +507,10 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
+| Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |
+| Html 重复设置 | 同字段两次、同属性两次、`input` 的 `type` 两次均抛 `LogicException`；`textarea` / `select` 无 `type()`、不输出标签的节点无属性方法（PHP 层 `undefined method`） |
 
-## 13. 明确不做（后续候选）
+## 14. 明确不做（后续候选）
 
 - 事件处理、状态管理、路由——永不进入
 - 表达式语言扩展（算术、函数、三元）

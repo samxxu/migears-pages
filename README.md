@@ -2,22 +2,23 @@
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-Declarative page definitions as plain PHP arrays, compiled to miGears Template files (`.tpl.php`). The array form is the canonical DSL: `migears/xml-pages` and `migears/yaml-pages` are thin syntax frontends that parse their own format into exactly this array model, and the whole node vocabulary, validation and interpolation live here — once, shared.
+Declarative page definitions for PHP, compiled to miGears Template files (`.tpl.php`). Pages are written with the `Html` factory (`h5::heading(2)->text('用户列表')`), which normalizes to a plain array model — the very same model `migears/xml-pages` and `migears/yaml-pages` parse their own formats into. The whole node vocabulary, validation and interpolation live here, once, shared by all four entry points.
 
 ## Features
 
 - PHP 8.1+, PSR-4 autoloading, namespace `MiGears\Pages`
+- User-level syntax: `MiGears\Pages\Html`, one factory per node, named after the HTML it emits
 - Node model: `text`, `heading`, `link`, `if`, `each`, `form`, `table`, `el`, `component` — the full page vocabulary in one place
 - `{{ path }}` interpolation with auto-escaping — XSS protection inherited from the template engine
 - Compile-time validation of structure, fields, paths and keys — nothing is silently dropped
-- **Attribute passthrough** for front-end frameworks: `"@click"`, `x-on:click`, `v-bind:href`, `wire:click`, `hx-get`, `data-*`, `class`/`id`/`style` are forwarded to the emitted tag
-- `Renderer` facade: one call from array DSL to HTML
+- **Attribute passthrough** for front-end frameworks: `"@click"`, `x-on:click`, `v-bind:href`, `wire:click`, `hx-get`, `data-*`, `class`/`id`/`style` are forwarded to the emitted tag, and `bind` names the framework's own binding (`bind="user.email"`)
+- `Renderer` facade: one call from a page declaration to HTML
 - Format frontends (`migears/xml-pages`, `migears/yaml-pages`) inherit the compiler and only implement `parse()` plus a couple of spelling hooks
 - Deliberately out of scope: business logic, event handling, state management, routing — those belong to the front-end framework you pair it with
 
 ## How It Works
 
-The page declaration is a PHP array — the single source of truth. Everything else is derived:
+The page declaration is a PHP array — the single source of truth. The `Html` factory writes that array for you: `Compiler::compile()` normalizes its nodes at the entry point, so a page built with `h5::` calls and a hand-written array take exactly the same path from there on. Everything else is derived:
 
 1. `Compiler::compile($page)` turns the array into `.tpl.php` sugar syntax (`## $expr ##`). The intermediate output stays readable, so each DSL keyword maps visibly to template syntax.
 2. `migears/template`'s `TemplateCompiler` turns that sugar into a pure PHP template (mtime-cached, recompiled only when the template changes). Rendering is plain PHP: the template runs and its variables are output to the browser as HTML. The declaration layer never enters runtime.
@@ -38,6 +39,7 @@ Requires PHP 8.1+ and `migears/template` ^2.0. No extensions, no third-party pac
 
 ```php
 use MiGears\Pages\Compiler;
+use MiGears\Pages\Html as h5;
 use MiGears\Template\Template;
 
 $compiler = new Compiler();
@@ -46,11 +48,11 @@ $tpl = $compiler->compile([
     'layout' => 'layout/main',
     'sections' => [
         'content' => [
-            ['type' => 'heading', 'level' => 2, 'text' => '用户列表'],
-            ['type' => 'table', 'items' => 'users', 'as' => 'user', 'empty' => '暂无数据', 'columns' => [
-                ['label' => 'ID', 'bind' => 'id'],
-                ['label' => '姓名', 'bind' => 'name'],
-            ]],
+            h5::heading(2)->text('用户列表'),
+            h5::table('users')->columns([
+                h5::col('ID')->pop('{{ row.id }}'),
+                h5::col('姓名')->pop('{{ row.name }}'),
+            ])->empty('暂无数据'),
         ],
     ],
 ]);
@@ -81,7 +83,56 @@ echo $renderer->render($page, ['users' => [...]]);
 
 The cache directory is content-addressed and only ever added to: a changed declaration writes a new `page_<md5>.tpl.php` and leaves the old one behind. Call `$renderer->clearCache()` on deploy to drop those derived pages — it returns how many it removed, leaves foreign files alone, and pages are simply recompiled on the next render. Deleting the directory wholesale is always safe too.
 
+## Page Syntax
+
+One factory per node, named after the HTML it emits; every other field is a method named after its HTML counterpart.
+
+```php
+use MiGears\Pages\Html as h5;
+
+$page = [
+    'layout' => 'layout/admin',
+    'sections' => ['content' => [
+        h5::heading(2)->text('用户列表')->id('usersTitle'),
+        h5::if('users')->then([
+            h5::table('users')->columns([
+                h5::col('姓名')->pop('{{ row.name }}'),
+                h5::col('操作')->content([
+                    h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+                ]),
+            ])->empty('暂无数据'),
+        ])->else([
+            h5::text('还没有用户'),
+        ]),
+    ]],
+];
+```
+
+| Factory | Argument | Node |
+|---------|----------|------|
+| `h5::text` | `text` | `text` |
+| `h5::heading` | `level` (default 1) | `heading` |
+| `h5::link` | `href` | `link` |
+| `h5::if` | `when` | `if` |
+| `h5::each` | `items` | `each` |
+| `h5::form` | `action` | `form` |
+| `h5::input` | `name` | `field`, input `text` |
+| `h5::textarea` | `name` | `field`, input `textarea` |
+| `h5::select` | `name` | `field`, input `select` |
+| `h5::table` | `items` | `table` |
+| `h5::col` | `label` | `column` |
+| `h5::component` | `name` | `component` |
+| `h5::el` | `tag` | `el` |
+
+Attribute methods exist only on the nodes that emit a tag — `heading`, `link`, `form`, `table`, `el`: `class`, `id`, `style`, `attr(name, value)`, `on(event, expression)` for `@event`, and `bind(name)` for the front-end framework's own binding. On the others those calls are an `undefined method` in PHP rather than a late compile error. `type()` exists only on `h5::input`, since `type` is an attribute of `<input>` alone; `h5::select()` and `h5::textarea()` fix their control in the factory. Field methods follow the same shape — `label`, `value`, `required`, `placeholder`, `options`, `checked`, `rows` — and the compiler still checks each one against the control it is used on.
+
+What the factories return is sugar. `Compiler::compile()` normalizes the nodes to the array model documented in the next section, which is also what the XML and YAML frontends parse into: one vocabulary, one set of checks, one wording per error. Setting the same field twice throws instead of overwriting, for the same reason the compiler never drops a written value. `docs/h5-syntax.md` walks through the whole syntax node by node.
+
+One marker per layer: pages interpolate with `{{ path }}`, while component templates use `## expr ##`. The separation is deliberate — the compiled page is handed to `migears/template`, which scans it again, so an unescaped `##` in a page would come back as template interpolation: it would skip the path validation this layer exists to enforce, and `### ... ###` would even reach the output raw. Page text, attribute values and component values are therefore escaped for the template layer, so `## 说明 ##` in a page renders exactly as written; literal fields (`label`, `name`, `tag`, `empty`, `option`) are emitted verbatim, so a `##` there is a compile error.
+
 ## Array DSL Reference
+
+This is the model the factories above normalize to, and what `migears/xml-pages` and `migears/yaml-pages` parse into.
 
 The page is a PHP array. The root has the fields `title` / `layout` / `body` / `sections`; `layout` + `sections` and `body` are mutually exclusive. Every node in `body` / `sections` is an array with a `type` key. Nested structures (`field`, `column`) are typed by their position — they need no `type`, and a written one must match.
 
@@ -97,7 +148,7 @@ The page is a PHP array. The root has the fields `title` / `layout` / `body` / `
 | `el` | `tag` required (lowercase), `body` optional, any forwarded attribute |
 | `component` | `name` required, `data` optional (values support `{{ path }}`) |
 
-`field` inputs: `text` (default), `password`, `email`, `number`, `textarea`, `select`, `checkbox`, `hidden`, `submit`. `select` fields take an `options` mapping and reject `value`; `checkbox` takes `checked` (bound path); `textarea` takes `rows` (default 4). `column` needs `label` and exactly one of `bind` (path relative to the row variable) or `content` (node tree in row scope).
+`field` inputs: `text` (default), `password`, `email`, `number`, `textarea`, `select`, `checkbox`, `hidden`, `submit`. `select` fields take an `options` mapping and reject `value`; `checkbox` takes `checked` (bound path); `textarea` takes `rows` (default 4). A field's `id` defaults to its `name` (and the label's `for` follows it); an explicit `id` overrides it. `pop` is the server side — short for *populate*, PHP handing data to the page — and `bind` names the browser side, the front-end variable the framework binds to. `h5::popAndBind()` writes both halves in one call when the two names agree. `column` needs `label` and exactly one of `pop` (a data reference, written `{{ row.name }}` — the leading variable is checked against the table's `as`) or `content` (node tree in row scope).
 
 `{{ path }}` interpolates a dot path into an auto-escaped output (`{{ user.name }}` → `## $user['name'] ?? '' ##`). Only `a.b.c` paths are allowed — no function calls, no arithmetic. Literal fields — `layout`, section names, `form.method`, `field.name`, `field.label`, `option` value and text, `table.empty`, `column.label`, `component.name` — are emitted as-is; `{{ }}` there is a compile error.
 
@@ -151,15 +202,19 @@ The sugar earns its keep in markup-heavy components — interpolation inside an 
 Make its directory findable, then reference it by name:
 
 ```php
+use MiGears\Pages\Html as h5;
+
 $tpl = new Template(__DIR__ . '/views');
 $tpl->addPath(__DIR__ . '/views/components');
 
 $renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
 echo $renderer->render([
-    'body' => [['type' => 'component', 'name' => 'my-card', 'data' => [
-        'title' => '{{ user.name }}',
-        'body' => 'body 由组件决定是否转义',
-    ]]],
+    'body' => [
+        h5::component('my-card')->data([
+            'title' => '{{ user.name }}',
+            'body' => 'body 由组件决定是否转义',
+        ]),
+    ],
 ], ['user' => ['name' => 'Alice']]);
 ```
 
@@ -176,14 +231,14 @@ How `Template::findTemplate()` resolves the name:
 Two limits worth designing around:
 
 - **Isolated scope.** A component is evaluated with its `data` map only — the page's other variables are not passed down, so everything it needs has to be handed over explicitly.
-- **String values only.** `data` values are validated at compile time and must be strings, and a `component` node emits no tag of its own, so it cannot carry `class` / `id` / `x-*`: wrap it in `el` when the wrapper needs attributes. Values arrive **unescaped**, so the component template chooses between `$this->e()` and `$this->raw()`.
+- **String values only.** `data` values are validated at compile time and must be strings, and `h5::component()` emits no tag of its own, so it has no attribute methods: wrap it in `h5::el()` when the wrapper needs `class` / `id` / `x-*`. Values arrive **unescaped**, so the component template chooses between `$this->e()` and `$this->raw()`.
 
 ## Errors
 
 Compile errors throw `MiGears\Pages\Exception\CompileException` with a node path, e.g.:
 
 ```
-sections.content[2].columns[2]: 列同时指定 bind 与 content
+sections.content[2].columns[2]: 列同时指定 pop 与 content
 ```
 
 A frontend overrides `newException()` so its own failures still arrive as its own exception class, and one `catch` keeps working for everything it throws.
@@ -206,22 +261,23 @@ MIT
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-用纯 PHP 数组书写的声明式页面定义，编译为 miGears 模板文件（`.tpl.php`）。数组形态是 DSL 的唯一事实标准：`migears/xml-pages` 与 `migears/yaml-pages` 只是语法前端——它们把自己的格式解析成同一个数组模型，而整套节点词表、校验与插值逻辑都在这一个包里，只实现一份，共同使用。
+面向 PHP 的声明式页面定义，编译为 miGears 模板文件（`.tpl.php`）。页面用 `Html` 工厂书写（`h5::heading(2)->text('用户列表')`），它归一为一个纯数组模型——`migears/xml-pages` 与 `migears/yaml-pages` 也正是把自己的格式解析成这个模型。整套节点词表、校验与插值逻辑只在这一个包里实现一份，四个入口共同使用。
 
 ## 特性
 
 - PHP 8.1+，PSR-4 自动加载，命名空间 `MiGears\Pages`
+- 用户级语法：`MiGears\Pages\Html`，一个节点一个工厂，工厂名与它输出的 HTML 对齐
 - 节点模型：`text`、`heading`、`link`、`if`、`each`、`form`、`table`、`el`、`component` —— 全部页面词汇集中在一处
 - `{{ path }}` 插值自动转义 —— XSS 防护由模板引擎承担
 - 编译期校验结构、字段、路径与键，**不静默丢弃任何东西**
-- **属性透传**：`"@click"`、`x-on:click`、`v-bind:href`、`wire:click`、`hx-get`、`data-*`、`class`/`id`/`style` 输出到生成的标签
-- `Renderer` 门面：从数组 DSL 一步渲染出 HTML
+- **属性透传**：`"@click"`、`x-on:click`、`v-bind:href`、`wire:click`、`hx-get`、`data-*`、`class`/`id`/`style` 输出到生成的标签；`bind` 用于前端框架自己的绑定（`bind="user.email"`）
+- `Renderer` 门面：从页面声明一步渲染出 HTML
 - 格式前端（`migears/xml-pages`、`migears/yaml-pages`）继承编译器，只实现 `parse()` 与少量拼写钩子
 - 明确不做：业务逻辑、事件处理、状态管理、路由 —— 这些交给你搭配的前端框架
 
 ## 工作原理
 
-页面声明是一个 PHP 数组 —— 唯一事实标准，其余都是派生物：
+页面声明是一个 PHP 数组 —— 唯一事实标准，其余都是派生物。`Html` 工厂替你写这份数组：`Compiler::compile()` 在入口把它的节点归一，所以用 `h5::` 写出来的页面与手写数组从那一刻起走的是同一条路。
 
 1. `Compiler::compile($page)` 把数组翻译为 `.tpl.php` 糖语法（`## $expr ##`）。中间产物保持可读，每个 DSL 词汇对应什么模板语法一目了然。
 2. `migears/template` 的 `TemplateCompiler` 把糖编译成纯 PHP 模板（mtime 缓存，仅模板变更后重编一次）。渲染由 PHP 执行：模板运行时把变量以 HTML 形式输出给浏览器，声明层不进入运行期。
@@ -242,6 +298,7 @@ composer require migears/pages
 
 ```php
 use MiGears\Pages\Compiler;
+use MiGears\Pages\Html as h5;
 use MiGears\Template\Template;
 
 $compiler = new Compiler();
@@ -250,11 +307,11 @@ $tpl = $compiler->compile([
     'layout' => 'layout/main',
     'sections' => [
         'content' => [
-            ['type' => 'heading', 'level' => 2, 'text' => '用户列表'],
-            ['type' => 'table', 'items' => 'users', 'as' => 'user', 'empty' => '暂无数据', 'columns' => [
-                ['label' => 'ID', 'bind' => 'id'],
-                ['label' => '姓名', 'bind' => 'name'],
-            ]],
+            h5::heading(2)->text('用户列表'),
+            h5::table('users')->columns([
+                h5::col('ID')->pop('{{ row.id }}'),
+                h5::col('姓名')->pop('{{ row.name }}'),
+            ])->empty('暂无数据'),
         ],
     ],
 ]);
@@ -285,7 +342,56 @@ echo $renderer->render($page, ['users' => [...]]);
 
 缓存目录按内容寻址、只增不减：声明一变就写入新的 `page_<md5>.tpl.php`，旧文件留在原地。部署时调用 `$renderer->clearCache()` 即可清掉这些派生页面——它返回删除数量、保留外来文件，页面在下次渲染时重新编译；直接整体删除缓存目录也始终安全。
 
+## 页面语法
+
+一个节点一个工厂，工厂名与它输出的 HTML 对齐；其余字段一律是成员方法，方法名同样对齐 HTML。
+
+```php
+use MiGears\Pages\Html as h5;
+
+$page = [
+    'layout' => 'layout/admin',
+    'sections' => ['content' => [
+        h5::heading(2)->text('用户列表')->id('usersTitle'),
+        h5::if('users')->then([
+            h5::table('users')->columns([
+                h5::col('姓名')->pop('{{ row.name }}'),
+                h5::col('操作')->content([
+                    h5::link('/users/{{ row.id }}/edit')->text('编辑'),
+                ]),
+            ])->empty('暂无数据'),
+        ])->else([
+            h5::text('还没有用户'),
+        ]),
+    ]],
+];
+```
+
+| 工厂 | 参数 | 节点 |
+|------|------|------|
+| `h5::text` | `text` | `text` |
+| `h5::heading` | `level`（默认 1） | `heading` |
+| `h5::link` | `href` | `link` |
+| `h5::if` | `when` | `if` |
+| `h5::each` | `items` | `each` |
+| `h5::form` | `action` | `form` |
+| `h5::input` | `name` | `field`，input 为 `text` |
+| `h5::textarea` | `name` | `field`，input 为 `textarea` |
+| `h5::select` | `name` | `field`，input 为 `select` |
+| `h5::table` | `items` | `table` |
+| `h5::col` | `label` | `column` |
+| `h5::component` | `name` | `component` |
+| `h5::el` | `tag` | `el` |
+
+属性方法只长在输出标签的节点上——`heading`、`link`、`form`、`table`、`el`：`class`、`id`、`style`、`attr(name, value)`、输出 `@event` 的 `on(event, expression)`，以及 `bind(name)`（前端框架自己的绑定）。在其它节点上这些调用是 PHP 层的 `undefined method`，不会拖到编译期才报。`type()` 只长在 `h5::input` 上，因为 `type` 是 `<input>` 独有的属性；`h5::select()` 与 `h5::textarea()` 的控件由工厂一次定下。字段方法同理——`label`、`value`、`required`、`placeholder`、`options`、`checked`、`rows`——而它们用在哪种控件上仍由编译器校验。
+
+工厂返回的只是糖：`Compiler::compile()` 在入口把节点归一成下一节记录的数组模型，也就是两个前端包解析出的模型——词表一份、校验一份、每个错误只有一种措辞。同一个字段写两次立即抛异常而不是覆盖，理由与编译器不静默丢弃任何写入的值相同。逐个节点的完整写法与设计取舍见 `docs/h5-syntax.md`。
+
+两层各用一个标记：页面层用 `{{ path }}` 插值，组件模板用 `## expr ##`。这个区分是刻意的——编译产物要交给 `migears/template` 再扫一遍，页面里未转义的 `##` 会被回读成模板插值，从而绕过本层要提供的路径校验，`### ... ###` 更会以不转义的形式直接进入输出。因此页面文本、属性值与组件值在编译时会按模板层语法转义，`## 说明 ##` 原样输出；字面量字段（`label`、`name`、`tag`、`empty`、`option`）是原样写入产物的，出现 `##` 即编译报错。
+
 ## 数组 DSL 参考
+
+下面就是工厂归一后的模型，也是 `migears/xml-pages` 与 `migears/yaml-pages` 解析出的模型。
 
 页面是一个 PHP 数组。根字段为 `title` / `layout` / `body` / `sections`；`layout` + `sections` 与 `body` 互斥。`body` / `sections` 中的每个节点都是带 `type` 键的数组。内嵌结构（`field`、`column`）的类型由位置决定——不必写 `type`；若写出，值必须匹配。
 
@@ -301,7 +407,7 @@ echo $renderer->render($page, ['users' => [...]]);
 | `el` | `tag` 必填（小写）、`body` 可选、任意透传属性 |
 | `component` | `name` 必填、`data` 可选（值支持 `{{ path }}`） |
 
-`field` 的 input：`text`（默认）、`password`、`email`、`number`、`textarea`、`select`、`checkbox`、`hidden`、`submit`。`select` 字段带 `options` 映射且不接受 `value`；`checkbox` 带 `checked`（绑定路径）；`textarea` 带 `rows`（默认 4）。`column` 需要 `label`，且 `bind`（相对行变量的路径）与 `content`（行变量作用域内的节点树）二选一。
+`field` 的 input：`text`（默认）、`password`、`email`、`number`、`textarea`、`select`、`checkbox`、`hidden`、`submit`。`select` 字段带 `options` 映射且不接受 `value`；`checkbox` 带 `checked`（绑定路径）；`textarea` 带 `rows`（默认 4）。字段的 `id` 默认等于 `name`（`label` 的 `for` 随之），显式 `id` 覆盖它。`pop` 是服务端那一侧（populate 的缩写，PHP 把数据渲染进页面），`bind` 是浏览器端那一侧，指名前端框架要绑定的变量；两侧同名时用 `h5::popAndBind()` 一次写好。`column` 需要 `label`，且 `pop`（数据引用，写成 `{{ row.name }}`，首段会与该表格的 `as` 校验）与 `content`（行变量作用域内的节点树）二选一。
 
 `{{ path }}` 把点路径插值为自动转义输出（`{{ user.name }}` → `## $user['name'] ?? '' ##`）。只支持 `a.b.c` 路径——函数调用、算术一律不允许。字面量字段——`layout`、section 名、`form.method`、`field.name`、`field.label`、`option` 的 value 与显示文本、`table.empty`、`column.label`、`component.name`——原样输出；在其中写 `{{ }}` 属编译错误。
 
@@ -355,15 +461,19 @@ echo $renderer->render($page, ['users' => [...]]);
 让它所在目录可被找到，然后在页面里按名引用：
 
 ```php
+use MiGears\Pages\Html as h5;
+
 $tpl = new Template(__DIR__ . '/views');
 $tpl->addPath(__DIR__ . '/views/components');
 
 $renderer = new Renderer($tpl, new Compiler(), __DIR__ . '/cache/pages');
 echo $renderer->render([
-    'body' => [['type' => 'component', 'name' => 'my-card', 'data' => [
-        'title' => '{{ user.name }}',
-        'body' => 'body 由组件决定是否转义',
-    ]]],
+    'body' => [
+        h5::component('my-card')->data([
+            'title' => '{{ user.name }}',
+            'body' => 'body 由组件决定是否转义',
+        ]),
+    ],
 ], ['user' => ['name' => 'Alice']]);
 ```
 
@@ -380,14 +490,14 @@ echo $renderer->render([
 设计组件前值得知道的两个限制：
 
 - **作用域隔离。** 组件只用它的 `data` 求值，页面的其它变量不会透传下来，需要什么就得显式传进去。
-- **只能传字符串。** `data` 的值在编译期校验，必须是字符串；且 `component` 节点自身不输出标签，挂不上 `class` / `id` / `x-*`，需要外层属性时用 `el` 包裹。值以**未转义**形式送达，转义与否由组件模板在 `$this->e()` 与 `$this->raw()` 之间决定。
+- **只能传字符串。** `data` 的值在编译期校验，必须是字符串；且 `h5::component()` 自身不输出标签，所以没有属性方法，需要外层属性时用 `h5::el()` 包裹。值以**未转义**形式送达，转义与否由组件模板在 `$this->e()` 与 `$this->raw()` 之间决定。
 
 ## 错误处理
 
 编译错误抛出 `MiGears\Pages\Exception\CompileException`，信息带节点路径，例如：
 
 ```
-sections.content[2].columns[2]: 列同时指定 bind 与 content
+sections.content[2].columns[2]: 列同时指定 pop 与 content
 ```
 
 前端包可覆写 `newException()`，使共享层产生的失败仍以其自身的异常类抛出，一个 `catch` 覆盖全部错误。
