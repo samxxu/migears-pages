@@ -12,10 +12,13 @@ namespace MiGears\Pages;
  * factory, hand-written arrays, and the XML / YAML frontends all reach the compiler
  * with the same node model: one vocabulary, one set of checks, one error catalogue.
  *
- * Three rules the factory follows:
+ * The rules the factory follows:
  *
- * - a factory takes exactly one argument — the value without which the node would not
- *   be that kind of node (level, tag, items, action, name, label);
+ * - a factory takes the value without which the node would not be that kind of node
+ *   (level, tag, items, action, name, label); the two iteration factories also take
+ *   their loop header as optional arguments (`as`, `index` on EACH, `as` on TABLE),
+ *   since that is the one place a `foreach` header keeps its names together — every
+ *   other factory takes exactly one argument;
  * - every other field is a member method named after its HTML counterpart (`type`,
  *   `href`, `target`, `method`, `value`, `placeholder`, `checked`, `rows`, `required`,
  *   `class`, `id`, `style`);

@@ -33,6 +33,18 @@ use MiGears\Pages\Node;
  * that PHP method names are case-insensitive, so the lowercase spelling keeps working;
  * `tests/FactoryNamingTest.php` is what actually holds the convention in place.
  *
+ * The two iteration factories take their loop header in the constructor, mirroring
+ * `foreach ($users as $i => $user)`: `EACH('users', as: 'user', index: 'i')` and
+ * `TABLE('users', as: 'row')`. The extra arguments are optional and mean the compiler's
+ * own defaults when left out (`item` / `row`, and no index variable at all), and an
+ * omitted one writes no field — so the fluent `->as()` / `->index()` spelling still
+ * works, while giving it here makes a later `->as()` a duplicate-setting error like any
+ * other field. Their names are public API, since they are what callers write.
+ *
+ * Every other factory takes exactly one argument, and always the same kind of thing: the
+ * value without which the node would not be that node. Blocks (`->body()`, `->THEN()`,
+ * `->fields()`) and HTML attributes stay methods, so no signature needs counting.
+ *
  * `INPUT`, `TEXTAREA`, `SELECT`, `TABLE`, `COL`, `FORM` and `EL` are tag names; `HEADING`
  * covers <h1>–<h6> and `LINK` is <a>. The four nodes that emit no tag keep the semantics
  * of the model: `TEXT`, `IF`, `EACH`, `COMPONENT`.
@@ -62,9 +74,23 @@ final class Html
         return new PlainNode(['type' => 'if', 'when' => $when]);
     }
 
-    public static function EACH(string $items): PlainNode
+    /**
+     * The loop header, as one call: `EACH('users', as: 'user', index: 'i')`.
+     *
+     * @param string|null $as    row variable; omitted means the compiler's default `item`
+     * @param string|null $index index variable; omitted means the loop binds no index
+     */
+    public static function EACH(string $items, ?string $as = null, ?string $index = null): PlainNode
     {
-        return new PlainNode(['type' => 'each', 'items' => $items]);
+        $node = ['type' => 'each', 'items' => $items];
+        if ($as !== null) {
+            $node['as'] = $as;
+        }
+        if ($index !== null) {
+            $node['index'] = $index;
+        }
+
+        return new PlainNode($node);
     }
 
     public static function FORM(string $action): TagNode
@@ -90,9 +116,17 @@ final class Html
         return new FieldNode(['type' => 'field', 'name' => $name, 'input' => 'select']);
     }
 
-    public static function TABLE(string $items): TagNode
+    /**
+     * @param string|null $as row variable; omitted means the compiler's default `row`
+     */
+    public static function TABLE(string $items, ?string $as = null): TagNode
     {
-        return new TagNode(['type' => 'table', 'items' => $items]);
+        $node = ['type' => 'table', 'items' => $items];
+        if ($as !== null) {
+            $node['as'] = $as;
+        }
+
+        return new TagNode($node);
     }
 
     public static function COL(string $label): PlainNode

@@ -39,6 +39,9 @@ final class FactoryNamingTest extends TestCase
     /** The only member methods allowed to be uppercase, because they name statements. */
     private const UPPER_METHODS = ['ELSE', 'THEN'];
 
+    /** `h5::class` is PHP's magic constant, not a call to a factory. */
+    private const MAGIC = ['class'];
+
     public function testHtmlDeclaresExactlyTheCapsFactories(): void
     {
         $declared = array_map(
@@ -110,9 +113,10 @@ final class FactoryNamingTest extends TestCase
         foreach ($this->sources() as $file => $content) {
             if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER) !== false) {
                 foreach ($matches as $match) {
-                    if (! in_array($match[1], self::FACTORIES, true)) {
-                        $offenders[] = "{$file}: {$match[0]}";
+                    if (in_array($match[1], self::FACTORIES, true) || in_array($match[1], self::MAGIC, true)) {
+                        continue;
                     }
+                    $offenders[] = "{$file}: {$match[0]}";
                 }
             }
 

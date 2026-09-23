@@ -11,6 +11,9 @@ use MiGears\Pages\Node;
 use MiGears\Pages\Renderer;
 use MiGears\Template\Template;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
+use ReflectionMethod;
+use ReflectionParameter;
 
 /**
  * The user-level syntax is sugar over the array model. Every case below asserts both
@@ -63,6 +66,10 @@ final class HtmlTest extends TestCase
                 h5::EACH('users')->body([h5::TEXT('{{ item.name }}')])->as('user')->index('i'),
                 ['type' => 'each', 'items' => 'users', 'body' => [['type' => 'text', 'text' => '{{ item.name }}']], 'as' => 'user', 'index' => 'i'],
             ],
+            'each loop header in the constructor' => [
+                h5::EACH('users', as: 'user', index: 'i')->body([h5::TEXT('{{ i }}. {{ user.name }}')]),
+                ['type' => 'each', 'items' => 'users', 'as' => 'user', 'index' => 'i', 'body' => [['type' => 'text', 'text' => '{{ i }}. {{ user.name }}']]],
+            ],
             'form' => [
                 h5::FORM('/users/save')->fields([h5::INPUT('name')->label('姓名')])->method('post'),
                 ['type' => 'form', 'action' => '/users/save', 'fields' => [['type' => 'field', 'name' => 'name', 'input' => 'text', 'label' => '姓名']], 'method' => 'post'],
@@ -96,6 +103,12 @@ final class HtmlTest extends TestCase
                     ['type' => 'column', 'label' => 'ID', 'pop' => '{{ row.id }}'],
                     ['type' => 'column', 'label' => '操作', 'content' => [['type' => 'link', 'href' => '/u/{{ row.id }}', 'text' => '编辑']]],
                 ], 'empty' => '暂无数据'],
+            ],
+            'table row variable in the constructor' => [
+                h5::TABLE('users', as: 'user')->columns([h5::COL('姓名')->pop('{{ user.name }}')]),
+                ['type' => 'table', 'items' => 'users', 'as' => 'user', 'columns' => [
+                    ['type' => 'column', 'label' => '姓名', 'pop' => '{{ user.name }}'],
+                ]],
             ],
             'component' => [
                 h5::COMPONENT('card')->data(['title' => '{{ user.name }}']),
@@ -277,5 +290,58 @@ final class HtmlTest extends TestCase
 
         /** @phpstan-ignore-next-line — the missing method is the point */
         h5::TEXT('x')->class('a');
+    }
+
+    public function testOmittingTheLoopHeaderWritesNoField(): void
+    {
+        // An omitted header argument means the compiler's own default, not a value the
+        // factory copies in — which is exactly what keeps the method spelling usable.
+        self::assertSame(['type' => 'each', 'items' => 'users'], h5::EACH('users')->toArray());
+        self::assertSame(
+            ['type' => 'each', 'items' => 'users', 'as' => 'user'],
+            h5::EACH('users', as: 'user')->toArray()
+        );
+        self::assertSame(['type' => 'table', 'items' => 'users'], h5::TABLE('users')->toArray());
+    }
+
+    public function testTheLoopHeaderMayBeAnArgumentOrAMethodButNotBoth(): void
+    {
+        self::assertSame(
+            h5::EACH('users', as: 'user', index: 'i')->toArray(),
+            h5::EACH('users')->as('user')->index('i')->toArray()
+        );
+        self::assertSame(
+            h5::TABLE('users', as: 'user')->toArray(),
+            h5::TABLE('users')->as('user')->toArray()
+        );
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('字段重复设置: as');
+
+        h5::EACH('users', as: 'user')->as('member');
+    }
+
+    public function testIterationFactoriesTakeTheLoopHeaderOthersTakeOneArgument(): void
+    {
+        $loopHeader = ['EACH' => ['items', 'as', 'index'], 'TABLE' => ['items', 'as']];
+
+        foreach ((new ReflectionClass(h5::class))->getMethods(ReflectionMethod::IS_STATIC) as $method) {
+            $parameters = $method->getParameters();
+            $names = array_map(static fn (ReflectionParameter $p): string => $p->getName(), $parameters);
+
+            if (! isset($loopHeader[$method->getName()])) {
+                self::assertCount(1, $names, $method->getName() . ' 只应收一个参数');
+
+                continue;
+            }
+
+            self::assertSame($loopHeader[$method->getName()], $names);
+            // required first, header after it: nothing to count, and no named argument
+            // can ever end up in front of a positional one
+            self::assertFalse($parameters[0]->isOptional(), $method->getName() . ' 的第一个参数必填');
+            foreach (array_slice($parameters, 1) as $optional) {
+                self::assertTrue($optional->isOptional(), $method->getName() . ' 的循环头参数必须可选');
+            }
+        }
     }
 }
