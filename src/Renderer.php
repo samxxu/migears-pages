@@ -43,10 +43,14 @@ class Renderer
         $file = $this->cacheFile($source);
 
         if (! is_file($file)) {
-            if (! is_dir($this->cacheDir) && ! mkdir($this->cacheDir, 0755, true) && ! is_dir($this->cacheDir)) {
+            if (! is_dir($this->cacheDir) && ! @mkdir($this->cacheDir, 0755, true) && ! is_dir($this->cacheDir)) {
                 throw new \RuntimeException("cannot create cache directory: {$this->cacheDir}");
             }
-            file_put_contents($file, $source, LOCK_EX);
+            // The result used to be dropped, so an unwritable cache directory was
+            // reported later as a template the engine could not find.
+            if (@file_put_contents($file, $source, LOCK_EX) === false) {
+                throw new \RuntimeException("cannot write compiled page: {$file}");
+            }
         }
 
         return $this->template->render(basename($file, '.tpl.php'), $data);

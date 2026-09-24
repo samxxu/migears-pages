@@ -907,6 +907,149 @@ final class CompilerTest extends TestCase
         }
     }
 
+    /* ---------------------------------------------------------------- *
+     * Guard tests: one case per validation rule. Each of these was a
+     * branch the suite never reached, so a rule could stop firing
+     * without a test going red.
+     * ---------------------------------------------------------------- */
+
+    public function testPageRejectsAnUnknownField(): void
+    {
+        $this->expectError(['body' => [], 'titel' => 'T'], 'unknown field "titel"');
+    }
+
+    public function testPageRequiresSectionsWhenLayoutIsSet(): void
+    {
+        $this->expectError(['layout' => 'layout/main'], 'layout requires sections');
+    }
+
+    public function testPageRejectsSectionsWithoutLayout(): void
+    {
+        $this->expectError(['sections' => ['content' => []]], 'sections cannot be used without layout');
+    }
+
+    public function testPageRequiresEitherBodyOrLayout(): void
+    {
+        $this->expectError([], 'no page content');
+    }
+
+    public function testHeadingRejectsANonIntegerLevel(): void
+    {
+        // The out-of-range level is covered; this is the other half of the same
+        // guard, and the one a mapping frontend hands over when a value was left
+        // quoted.
+        $this->expectError(
+            ['body' => [['type' => 'heading', 'level' => '2', 'text' => 'T']]],
+            'heading level must be an integer from 1 to 6'
+        );
+    }
+
+    public function testEachRejectsVariableNamesThatAreNotIdentifiers(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'users', 'as' => '1x', 'body' => []]]],
+            'each as must be a valid variable name'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'users', 'as' => 'u', 'index' => 'i-j', 'body' => []]]],
+            'each index must be a valid variable name'
+        );
+    }
+
+    public function testTableRejectsARowVariableThatIsNotAnIdentifier(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'as' => 'row list', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}']]]]],
+            'table as must be a valid variable name'
+        );
+    }
+
+    public function testFormRejectsAFieldThatIsNotANode(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => ['name']]]],
+            'field must be an array'
+        );
+    }
+
+    public function testFieldRejectsAnUnknownInputType(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'nope']]]]],
+            'invalid input type "nope"'
+        );
+    }
+
+    public function testSelectRequiresAnOptionsMap(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'select']]]]],
+            'select field is missing an options map'
+        );
+    }
+
+    public function testTextareaRejectsANonPositiveRowCount(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => 'textarea', 'rows' => 0]]]]],
+            'textarea rows must be a positive integer'
+        );
+    }
+
+    public function testCheckboxCarriesAnExplicitValue(): void
+    {
+        // The other half of the checkbox branch: value is a data path, so the box
+        // submits the bound value rather than the browser's default "on".
+        $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+            ['name' => 'agree', 'label' => 'Agree', 'input' => 'checkbox', 'value' => 'agree.value'],
+        ]]]]);
+
+        $this->assertStringContainsString('value="## $agree[\'value\'] ?? \'\' ##"', $out);
+    }
+
+    public function testColumnMustBeANodeNotAScalar(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => ['A']]]],
+            'column must be an array'
+        );
+    }
+
+    public function testColumnRequiresALabel(): void
+    {
+        $this->expectError(
+            ['body' => [['type' => 'table', 'items' => 'u', 'columns' => [['pop' => '{{ row.a }}']]]]],
+            'missing string field "label"'
+        );
+    }
+
+    public function testBindMustHoldAJavaScriptName(): void
+    {
+        // The {{ }} refusal is covered above; these are the two other shapes a
+        // wrong value arrives in, and both used to reach the tag unchecked.
+        $this->expectError(
+            ['body' => [['type' => 'el', 'tag' => 'div', 'bind' => 'user email', 'body' => []]]],
+            'bind must hold a JS variable name or path'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'el', 'tag' => 'div', 'bind' => true, 'body' => []]]],
+            'bind must hold a JS variable name or path'
+        );
+    }
+
+    public function testBooleanAttributeValueIsNormalised(): void
+    {
+        // A mapping frontend parses true/false into booleans, so the attribute
+        // that reaches the tag would otherwise be cast to "" or "1".
+        $out = $this->compile(['body' => [
+            ['type' => 'el', 'tag' => 'div', 'data-on' => true, 'body' => []],
+            ['type' => 'el', 'tag' => 'div', 'data-on' => false, 'body' => []],
+        ]]);
+
+        $this->assertStringContainsString('data-on="true"', $out);
+        $this->assertStringContainsString('data-on="false"', $out);
+    }
+
     /**
      * @param array<string, mixed> $page
      */

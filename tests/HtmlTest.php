@@ -122,6 +122,10 @@ final class HtmlTest extends TestCase
                 h5::EL('button')->attr('x-data', '{ open: false }')->on('click', 'open = !open')->BODY([h5::TEXT('Toggle')]),
                 ['type' => 'el', 'tag' => 'button', 'x-data' => '{ open: false }', '@click' => 'open = !open', 'body' => [['type' => 'text', 'text' => 'Toggle']]],
             ],
+            'el with style' => [
+                h5::EL('div')->style('color: red')->BODY([]),
+                ['type' => 'el', 'tag' => 'div', 'style' => 'color: red', 'body' => []],
+            ],
             'bind (browser side)' => [
                 h5::EL('span')->bind('user.email')->BODY([]),
                 ['type' => 'el', 'tag' => 'span', 'bind' => 'user.email', 'body' => []],

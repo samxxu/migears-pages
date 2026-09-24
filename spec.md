@@ -368,6 +368,7 @@ echo $renderer->render($page, $data);
 - Internally it does: `compile()` → write to `$cacheDir` (content-addressed: `page_<md5(source)>.tpl.php`, not rewritten while the declaration is unchanged) → `$template->render()`.
 - On construction it registers `$cacheDir` into `$template`'s search paths; layouts and components still resolve through the template paths the user already configured. Because it is an unshift, the derived directory comes **before** the user's template directories: normal names (`page_<md5>`) do not collide, but the direction is "derivatives win".
 - Rendering the same declaration twice hits the cache file and does one disk write.
+- Two failures are reported from this path as `\RuntimeException`: `cannot create cache directory: <dir>` when the directory cannot be made, and `cannot write compiled page: <file>` when the write fails. Both used to be dropped, leaving the render to fail one step later as a template the engine could not find.
 - The cache **only ever grows**: a changed declaration writes a new file, and old ones are not auto-pruned. `clearCache()` deletes the `page_*.tpl.php` this class wrote and returns the deleted count (repeated calls return 0); the cache directory itself stays, and pages are recompiled on the next `render()`. Clearing matches that name exactly, so hand-written templates, foreign files, and the template compiler's own outputs sharing the directory are unaffected. The template compiler's own outputs are managed by `Template` and are outside this API — to reset both at once, deleting the whole cache directory remains safe.
 
 ## 10. User syntax: the Html factory
@@ -512,7 +513,8 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Targeted interception | `x-on-click` errors and suggests `x-on:click` or `@click` |
 | Interpolation symbol | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` error; adjacent `{{ a }}{{ b }}` allowed |
 | Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
-| Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
+| Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value |
+| Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
 | Html repeated setting | same field twice, same attribute twice, `input`'s `type` twice all throw `LogicException`; `textarea` / `select` have no `type()`, and tag-less nodes have no attribute methods (PHP-level `undefined method`) |
 
@@ -896,6 +898,7 @@ echo $renderer->render($page, $data);
 - 内部完成：`compile()` → 写入 `$cacheDir`（内容寻址：`page_<md5(source)>.tpl.php`，声明不变不重写）→ `$template->render()`。
 - 构造时把 `$cacheDir` 注册进 `$template` 的搜索路径，布局与组件仍走用户已配置的模板路径。因为是 unshift，派生目录排在用户模板目录**之前**：正常命名（`page_<md5>`）不会碰撞，但方向上是「派生物优先」。
 - 两次渲染同一声明时命中缓存文件，只做一次磁盘写入。
+- 这条路径上的两类失败都以 `\RuntimeException` 报告：目录建不出来时是 `cannot create cache directory: <dir>`，写盘失败时是 `cannot write compiled page: <file>`。二者过去都被丢弃，于是渲染在下一步才失败，表现为引擎找不到模板。
 - 缓存**只增不减**：声明一变就写新文件，旧文件不自动清理。`clearCache()` 删除本类写出的 `page_*.tpl.php` 并返回删除数量（重复调用返回 0），缓存目录本身保留，页面在下次 `render()` 时重新编译回填；清理只按该命名精确匹配，因此共享该目录的手写模板、外来文件与模板编译器产物都不受影响。模板编译器自身的产物归 `Template` 管理，不在本 API 范围内——要一次性重置两处，整体删除缓存目录仍然安全。
 
 ## 10. 用户级语法：Html 工厂
@@ -1040,7 +1043,8 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 定向拦截 | `x-on-click` 报错并提示 `x-on:click` 或 `@click` |
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
-| 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
+| 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 |
+| 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |
 | Html 重复设置 | 同字段两次、同属性两次、`input` 的 `type` 两次均抛 `LogicException`；`textarea` / `select` 无 `type()`、不输出标签的节点无属性方法（PHP 层 `undefined method`） |
 

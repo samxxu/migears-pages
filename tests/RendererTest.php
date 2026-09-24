@@ -136,6 +136,57 @@ class RendererTest extends TestCase
         self::assertCount(1, glob($cacheDir . '/*.tpl.php') ?: []);
     }
 
+    public function testReportsACacheDirectoryItCannotCreate(): void
+    {
+        // A file where the directory has to go: mkdir() cannot succeed, and the
+        // failure has to be named here rather than surfacing later as a template
+        // the engine could not find.
+        $blocker = $this->cacheDir . '_blocker';
+        file_put_contents($blocker, 'not a directory');
+
+        try {
+            $renderer = new Renderer(
+                new Template(__DIR__ . '/fixtures/views'),
+                new Compiler(),
+                $blocker . '/cache'
+            );
+
+            $renderer->render(['body' => [['type' => 'text', 'text' => 'hi']]]);
+            self::fail('expected the cache directory failure to be reported');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('cannot create cache directory', $e->getMessage());
+        } finally {
+            unlink($blocker);
+        }
+    }
+
+    public function testReportsACacheFileItCannotWrite(): void
+    {
+        // The directory has to exist and be readable (so the renderer skips its
+        // own mkdir) but not writable, or the failure lands on the wrong branch.
+        mkdir($this->cacheDir, 0755, true);
+        $cacheDir = $this->cacheDir . '/readonly';
+        mkdir($cacheDir, 0500, true);
+        if (is_writable($cacheDir)) {
+            $this->markTestSkipped('this user writes into directories regardless of their mode');
+        }
+
+        try {
+            $renderer = new Renderer(
+                new Template(__DIR__ . '/fixtures/views'),
+                new Compiler(),
+                $cacheDir
+            );
+
+            $renderer->render(['body' => [['type' => 'text', 'text' => 'hi']]]);
+            self::fail('expected the cache file failure to be reported');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('cannot write compiled page', $e->getMessage());
+        } finally {
+            chmod($cacheDir, 0700);
+        }
+    }
+
     public function testRerendersWhenDeclarationChanges(): void
     {
         $renderer = new Renderer(
