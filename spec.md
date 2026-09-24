@@ -472,13 +472,15 @@ migears-pages/
 │   ├── InputNode.php        `<input>` fields (the `type` method)
 │   └── Exception/
 │       └── CompileException.php
-└── tests/
-    ├── CompilerTest.php     node compilation, validation, interpolation, passthrough assertions
-    ├── RendererTest.php     full rendering through migears/template
-    ├── HtmlTest.php         Html factory: normalization byte-identical to a hand-written array
-    ├── FactoryNamingTest.php  naming convention guard: factory names all caps, member methods lowercase (§10)
-    └── fixtures/
-        └── views/           layouts used by rendering tests
+├── tests/
+│   ├── CompilerTest.php     node compilation, validation, interpolation, passthrough assertions
+│   ├── RendererTest.php     full rendering through migears/template
+│   ├── HtmlTest.php         Html factory: normalization byte-identical to a hand-written array
+│   ├── FactoryNamingTest.php  naming convention guard: factory names all caps, member methods lowercase (§10)
+│   └── fixtures/
+│       └── views/           layouts used by rendering tests
+└── tools/
+    └── message-coverage.php   advisory: the error sites whose wording no test reproduces (§13)
 ```
 
 Composer dependency note: what runs at runtime is the generated template, which depends on `migears/template`, so it is a `require`. Parsing extensions (ext-yaml, SimpleXML) are declared by each frontend package; this package is not aware of them.
@@ -518,6 +520,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
 | Html repeated setting | same field twice, same attribute twice, `input`'s `type` twice all throw `LogicException`; `textarea` / `select` have no `type()`, and tag-less nodes have no attribute methods (PHP-level `undefined method`) |
+| Error-message coverage | the advisory tool (`tools/message-coverage.php`) reports how many of a package's error sites its tests reproduce, and lists the rest — the conditions inside a line that line coverage cannot see. Wording is matched heuristically, so a lead is opened and read by hand and never gates the suite |
 
 ## 14. Explicitly not done (future candidates)
 
@@ -1003,13 +1006,15 @@ migears-pages/
 │   ├── InputNode.php        `<input>` 字段（`type` 方法）
 │   └── Exception/
 │       └── CompileException.php
-└── tests/
-    ├── CompilerTest.php     节点编译、校验、插值、透传断言
-    ├── RendererTest.php     经 migears/template 完整渲染验证
-    ├── HtmlTest.php         Html 工厂：归一结果与手写数组逐字节一致
-    ├── FactoryNamingTest.php 命名约定守卫：工厂名全大写、成员方法小写（§10）
-    └── fixtures/
-        └── views/           渲染测试用布局
+├── tests/
+│   ├── CompilerTest.php     节点编译、校验、插值、透传断言
+│   ├── RendererTest.php     经 migears/template 完整渲染验证
+│   ├── HtmlTest.php         Html 工厂：归一结果与手写数组逐字节一致
+│   ├── FactoryNamingTest.php 命名约定守卫：工厂名全大写、成员方法小写（§10）
+│   └── fixtures/
+│       └── views/           渲染测试用布局
+└── tools/
+    └── message-coverage.php   咨询性：措辞未被任何测试复现的报错点（§13）
 ```
 
 composer 依赖说明：运行期执行的是生成的模板，依赖 migears/template，故设为 `require`。解析扩展（ext-yaml、SimpleXML）由前端包各自声明，本包不感知。
@@ -1049,6 +1054,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |
 | Html 重复设置 | 同字段两次、同属性两次、`input` 的 `type` 两次均抛 `LogicException`；`textarea` / `select` 无 `type()`、不输出标签的节点无属性方法（PHP 层 `undefined method`） |
+| 错误消息覆盖 | 咨询性工具（`tools/message-coverage.php`）报告某包有多少报错点的措辞被测试复现、其余是哪些——这些正是行覆盖看不到的行内条件。匹配是启发式的，线索只供人工过目，绝不作为套件门禁 |
 
 ## 14. 明确不做（后续候选）
 

@@ -255,6 +255,12 @@ composer test
 
 Unit tests assert exact compiled output; the renderer tests run the compiled page through the full miGears Template pipeline.
 
+```bash
+composer message-coverage
+```
+
+Advisory, and deliberately outside `composer test`: this one lists the error sites whose wording no test reproduces, which is where the conditions inside a line hide — line coverage says a line ran, not which condition it was. Matching is heuristic, so each lead has to be opened and read; pass a directory (`php tools/message-coverage.php ../migears-yaml-pages`) to run it over a frontend package's own validation.
+
 ## License
 
 MIT
@@ -513,6 +519,12 @@ composer test
 ```
 
 单元测试断言编译产物；渲染测试把编译产物经 migears/template 完整渲染验证。
+
+```bash
+composer message-coverage
+```
+
+这条是咨询性的，刻意不放进 `composer test`：它列出措辞未被任何测试复现的报错点，而「一个行内的条件」正藏在那里——行覆盖只能说某行跑过，说不出跑的是哪个条件。匹配是启发式的，每条线索都得打开看；传一个目录（`php tools/message-coverage.php ../migears-yaml-pages`）即可跑前端包自己的校验。
 
 ## License
 
