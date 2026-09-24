@@ -1050,6 +1050,49 @@ final class CompilerTest extends TestCase
         $this->assertStringContainsString('data-on="false"', $out);
     }
 
+    public function testExplicitAttributeCollisionAndDuplicateAreRefused(): void
+    {
+        // The core names an explicitly attached attribute for the frontends that
+        // do not override explicitAttrRef() (XML overrides it to its `<attr name>`
+        // wording), so the default wording is what these two messages carry.
+        $this->expectStandInError(
+            ['body' => [['type' => 'el', 'tag' => 'div', '_extraAttrs' => ['tag' => 'span'], 'body' => []]]],
+            'attribute "tag" collides with the node field "tag"'
+        );
+        $this->expectStandInError(
+            ['body' => [['type' => 'el', 'tag' => 'div', 'class' => 'a', '_extraAttrs' => ['class' => 'b'], 'body' => []]]],
+            'attribute "class" duplicates an existing attribute of the same name'
+        );
+    }
+
+    public function testTwoSpellingsFoldedOntoOneAttributeAreRefused(): void
+    {
+        // A frontend that maps a spelling onto a name the node already carries:
+        // both would be emitted, and a tag with the same attribute twice keeps
+        // whichever the browser reads last.
+        $this->expectStandInError(
+            ['body' => [['type' => 'el', 'tag' => 'div', '@click' => 'a', '__click' => 'b', 'body' => []]]],
+            'attribute "@click" defined twice'
+        );
+    }
+
+    /**
+     * Errors raised by the stand-in frontend, whose attribute surface — a name
+     * mapping and explicitly attached attributes — the array model cannot
+     * express on its own.
+     *
+     * @param array<string, mixed> $page
+     */
+    private function expectStandInError(array $page, string $needle): void
+    {
+        try {
+            (new MappingFrontend())->compile($page);
+            $this->fail('should have failed to compile: ' . $needle);
+        } catch (CompileException $e) {
+            $this->assertStringContainsString($needle, $e->getMessage());
+        }
+    }
+
     /**
      * @param array<string, mixed> $page
      */
@@ -1103,5 +1146,45 @@ final class StubFrontend extends Compiler
     protected function parse(string $source): array
     {
         return ['body' => [['type' => 'text', 'text' => trim($source)]]];
+    }
+}
+
+/**
+ * A stand-in frontend for the attribute surface the array model cannot express:
+ * a name mapping that folds two spellings onto one attribute (XML folds
+ * `__click` onto `@click`), and explicitly attached attributes that skip the
+ * whitelist and the mapping (XML's `<attr>` children). Both are documented
+ * hooks of this compiler, and no other case in this package can make an
+ * attribute collide with a node field, with another attribute, or with the name
+ * another spelling maps onto.
+ */
+final class MappingFrontend extends Compiler
+{
+    /** Node keys that hold attributes rather than being an attribute name. */
+    private const ATTRIBUTE_HOLDERS = ['_attrs', '_extraAttrs'];
+
+    protected function mapAttributeName(string $name, string $path): string
+    {
+        if (str_starts_with($name, '__') && $name !== '__') {
+            return '@' . substr($name, 2);
+        }
+
+        return parent::mapAttributeName($name, $path);
+    }
+
+    protected function attributeCandidates(array $n, array $dslFields): array
+    {
+        $candidates = [];
+        foreach (parent::attributeCandidates($n, $dslFields) as $candidate) {
+            if (! in_array($candidate['name'], self::ATTRIBUTE_HOLDERS, true)) {
+                $candidates[] = $candidate;
+            }
+        }
+
+        foreach ($n['_extraAttrs'] ?? [] as $name => $value) {
+            $candidates[] = ['name' => (string) $name, 'value' => $value, 'explicit' => true];
+        }
+
+        return $candidates;
     }
 }

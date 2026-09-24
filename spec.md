@@ -514,6 +514,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Interpolation symbol | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` error; adjacent `{{ a }}{{ b }}` allowed |
 | Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
 | Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value |
+| Frontend hooks | the documented hooks the array model cannot exercise on its own, driven by a stand-in frontend: a name mapping that folds two spellings onto one attribute, and explicit attributes that skip the whitelist and the mapping. Both raise the core's path-carrying errors — collision with a node field, a duplicate attribute, and two spellings that resolve to one name |
 | Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
 | Html repeated setting | same field twice, same attribute twice, `input`'s `type` twice all throw `LogicException`; `textarea` / `select` have no `type()`, and tag-less nodes have no attribute methods (PHP-level `undefined method`) |
@@ -1044,6 +1045,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
 | 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 |
+| 前端钩子 | 数组模型自身触达不到的文档化钩子，由替身前端驱动：把两种拼写折成同一属性的名字映射，以及跳过白名单与映射的显式属性。两者都抛核心带路径的错误——与节点字段冲突、属性重复、两种拼写落到同一名字 |
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |
 | Html 重复设置 | 同字段两次、同属性两次、`input` 的 `type` 两次均抛 `LogicException`；`textarea` / `select` 无 `type()`、不输出标签的节点无属性方法（PHP 层 `undefined method`） |
