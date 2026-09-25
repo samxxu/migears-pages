@@ -64,7 +64,7 @@ A page declaration is a PHP array (`array<string, mixed>`). The root mapping is 
 | Field | Type | Required | Meaning |
 |-------|------|----------|---------|
 | `title` | string | no | page title, written into the `title` section |
-| `layout` | string | no | the layout template to extend (e.g. `layout/admin`) |
+| `layout` | string | no | the layout template to extend, named inside the registered view roots (e.g. `layout/admin`); the template-name rule of §6.8 applies |
 | `body` | array | conditional | the page body node tree when there is no `layout` |
 | `sections` | array | conditional | with a `layout`, section name → node tree array |
 
@@ -293,6 +293,8 @@ Compiled output:
 
 Interpolated values reach the component unescaped; escaping is the component template's decision (text with `$this->e()`, trusted HTML with `$this->raw()`) — pre-escaping at compile time would stack into double escaping.
 
+A template name is a **relative path inside the registered view roots**, because the engine joins it with each root and includes the file it finds. `..` would climb out of those roots, and `.` or an empty segment names a root itself, so all three are a compile error; a NUL byte is refused too, before it reaches the filesystem call that would throw on it. A backslash counts as a segment separator as well, since it is one on Windows. `layout` (§4) carries the same rule, so a page can never reach a template outside its roots.
+
 ### 6.9 el
 
 ```php
@@ -437,6 +439,7 @@ Error classes:
 | Path error | interpolation/path grammar mismatch | invalid path "user name" |
 | Context error | pop/content mutually exclusive, etc. | column has both pop and content; pop does not reference the row variable |
 | Root field type error | `layout` / `title` not a string, `sections` not a mapping | page: layout must be a string, got array |
+| Template name error | `layout` / `component.name` is not a relative name inside the view roots: an empty, "." or ".." segment, or a NUL byte | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
 | method type error | `form.method` not a string (validated before any cast, no PHP warning leaks) | method must be the string "get" or "post", got array |
 | List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), currently a keyed mapping; wrap it in [ ] |
 | Field value type error | `field.required` not a boolean, `option` text not a string | required must be a boolean, got string |
@@ -515,7 +518,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Targeted interception | `x-on-click` errors and suggests `x-on:click` or `@click` |
 | Interpolation symbol | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` error; adjacent `{{ a }}{{ b }}` allowed |
 | Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
-| Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value |
+| Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value / template names inside the view roots (`layout` and `component.name`, accepted forms and refused ones) |
 | Frontend hooks | the documented hooks the array model cannot exercise on its own, driven by a stand-in frontend: a name mapping that folds two spellings onto one attribute, and explicit attributes that skip the whitelist and the mapping. Both raise the core's path-carrying errors — collision with a node field, a duplicate attribute, and two spellings that resolve to one name |
 | Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
@@ -598,7 +601,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `title` | string | 否 | 页面标题，写入 `title` section |
-| `layout` | string | 否 | 继承的布局模板名（如 `layout/admin`） |
+| `layout` | string | 否 | 继承的布局模板名，须位于注册视图根内（如 `layout/admin`）；模板名规则见 §6.8 |
 | `body` | array | 视情况 | 无 `layout` 时的页面主体节点树 |
 | `sections` | array | 视情况 | 有 `layout` 时，section 名 → 节点树数组 |
 
@@ -827,6 +830,8 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 插值值以未转义形式到达组件，转义由组件模板决定（文本用 `$this->e()`，信任的 HTML 用 `$this->raw()`）——编译期预转义会叠成双重转义。
 
+模板名是**注册视图根内的相对路径**——引擎把它与每个根拼接后 include 命中的文件。`..` 会爬出根外，`.` 或空段指向根本身，三者一律编译报错；NUL 字节同样拒绝，免得落到那个会因它抛错的文件系统调用上。反斜杠也按段分隔符处理，因为它在 Windows 上就是分隔符。`layout`（§4）适用同一规则，页面因此永远触达不到根之外的模板。
+
 ### 6.9 el
 
 ```php
@@ -971,6 +976,7 @@ sections.content[2].columns[2]: 列同时指定 pop 与 content
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
 | 上下文错误 | pop/content 互斥等 | column 同时含 pop 与 content；pop 未引用行变量 |
 | 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout 必须是字符串，收到 array |
+| 模板名错误 | `layout` / `component.name` 不是视图根内的相对名：空段、`.`、`..`，或含 NUL 字节 | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
 | method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
 | 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
 | 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required 必须是布尔值，收到 string |
@@ -1049,7 +1055,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 定向拦截 | `x-on-click` 报错并提示 `x-on:click` 或 `@click` |
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
-| 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 |
+| 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 / 模板名不越出视图根（`layout` 与 `component.name` 的接受与拒绝形态） |
 | 前端钩子 | 数组模型自身触达不到的文档化钩子，由替身前端驱动：把两种拼写折成同一属性的名字映射，以及跳过白名单与映射的显式属性。两者都抛核心带路径的错误——与节点字段冲突、属性重复、两种拼写落到同一名字 |
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |

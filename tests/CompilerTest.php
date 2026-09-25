@@ -468,6 +468,43 @@ final class CompilerTest extends TestCase
         );
     }
 
+    public function testTemplateNamesStayInsideTheViewRoots(): void
+    {
+        // A layout and a component name both name a template file, and the engine
+        // resolves one by joining it with every registered view root: ".." climbs
+        // out of them and includes whatever it finds there.
+        $this->assertStringContainsString(
+            "\$this->extends('admin/section/card')",
+            $this->compile([
+                'layout' => 'admin/section/card',
+                'sections' => ['content' => [['type' => 'text', 'text' => 'x']]],
+            ])
+        );
+        $this->assertSame(
+            "<?= \$this->component('name.with.dots/x-1') ?>",
+            $this->compile(['body' => [['type' => 'component', 'name' => 'name.with.dots/x-1']]])
+        );
+
+        $names = ['../outside', 'a/../../outside', '..', '.', 'a/./b', 'a//b', 'a/', '/etc/hosts', '..\\outside', ''];
+        foreach ($names as $name) {
+            $this->expectError(
+                ['layout' => $name, 'sections' => ['content' => [['type' => 'text', 'text' => 'x']]]],
+                'must be a template name relative to the views root'
+            );
+            $this->expectError(
+                ['body' => [['type' => 'component', 'name' => $name]]],
+                'must be a template name relative to the views root'
+            );
+        }
+
+        // The filesystem call this name would reach throws on a NUL byte instead
+        // of answering, so the compiler refuses it where it can be reported.
+        $this->expectError(
+            ['layout' => "a\0b", 'sections' => ['content' => [['type' => 'text', 'text' => 'x']]]],
+            'not a path containing a NUL byte'
+        );
+    }
+
     public function testInterpolationEdgeCases(): void
     {
         $this->assertSame(

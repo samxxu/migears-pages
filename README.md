@@ -173,7 +173,7 @@ Both compile through this package, so behaviour is identical: same node vocabula
 
 ## Custom Components
 
-This package ships no components of its own (`migears/xml-pages` and `migears/yaml-pages` bundle four built-ins; here you bring your own). A `component` node is handed straight to `migears/template`, so writing a custom component means writing an ordinary template file and making its name reachable from a registered path. There is no registry, no configuration, and no compile-time check that the file exists — `Renderer` registers only its own cache directory.
+This package ships no components of its own (`migears/xml-pages` and `migears/yaml-pages` bundle four built-ins; here you bring your own). A `component` node is handed straight to `migears/template`, so writing a custom component means writing an ordinary template file and making its name reachable from a registered path. There is no registry, no configuration, and no compile-time check that the file exists — `Renderer` registers only its own cache directory. The name itself is checked, though: it has to be a relative path inside those roots, so `..`, `.` and empty segments are compile errors and a page cannot reach a template beside them. `layout` follows the same rule.
 
 Write the component as a plain template file (`views/components/my-card.php`):
 
@@ -438,7 +438,7 @@ $page = [
 
 ## 自定义组件
 
-本包不自带任何组件（`migears/xml-pages` 与 `migears/yaml-pages` 各随包分发四个内置组件；本包要自己写）。`component` 节点直接交给 `migears/template` 处理，所以「写自定义组件」就是写一个普通模板文件、再让这个名字能被某个已注册路径找到。没有注册表、没有配置，编译期也不会检查文件是否存在——`Renderer` 只注册自己的缓存目录。
+本包不自带任何组件（`migears/xml-pages` 与 `migears/yaml-pages` 各随包分发四个内置组件；本包要自己写）。`component` 节点直接交给 `migears/template` 处理，所以「写自定义组件」就是写一个普通模板文件、再让这个名字能被某个已注册路径找到。没有注册表、没有配置，编译期也不会检查文件是否存在——`Renderer` 只注册自己的缓存目录。但名字本身会被校验：必须是这些根内的相对路径，`..`、`.` 与空段一律编译报错，页面因此触达不到根之外的模板。`layout` 适用同一规则。
 
 组件写成普通模板文件（`views/components/my-card.php`）：
 

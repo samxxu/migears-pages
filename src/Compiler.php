@@ -445,6 +445,7 @@ class Compiler
             $this->error('page: layout must be a string, got ' . gettype($layout));
         }
         $layout = $this->literal($layout, 'page', 'layout');
+        $this->assertTemplateName($layout, 'page', 'layout');
         $out = "<?php \$this->extends('" . $this->str($layout) . "') ?>\n";
 
         $sections = $this->requireMap(
@@ -851,6 +852,7 @@ class Compiler
     private function compileComponent(array $n, string $path): string
     {
         $name = $this->literal($this->requireString($n, 'name', $path), $path, 'name');
+        $this->assertTemplateName($name, $path, 'component name');
         $this->forwardedAttrs($n, ['name', 'data'], $path, false);   // component emits its own markup
 
         if (! array_key_exists('data', $n)) {
@@ -1152,6 +1154,33 @@ class Compiler
     {
         if (str_contains($text, '##')) {
             $this->error("{$path}: {$where} is a literal and may not contain \"##\" (template-level syntax)");
+        }
+    }
+
+    /**
+     * A layout and a component name both name a template file, and the template
+     * engine resolves one by joining it with every registered view root and
+     * including the file it finds. Only a relative name stays inside those roots:
+     * ".." climbs out of them, an empty or "." segment says nothing, and a leading
+     * separator is not a name at all. A NUL byte is refused here because the
+     * filesystem call that would receive it throws instead of answering.
+     *
+     * A backslash is a path separator on Windows, where it would climb out too, so
+     * it is read as one here rather than left to the platform.
+     */
+    private function assertTemplateName(string $name, string $path, string $field): void
+    {
+        if (str_contains($name, "\0")) {
+            $this->error("{$path}: {$field} must be a template name relative to the views root, not a path containing a NUL byte");
+        }
+
+        foreach (preg_split('#[/\\\\]#', $name) ?: [] as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                $this->error(
+                    "{$path}: {$field} \"{$name}\" must be a template name relative to the views root;"
+                    . ' empty, "." and ".." segments are not allowed'
+                );
+            }
         }
     }
 
