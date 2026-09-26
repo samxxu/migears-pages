@@ -135,6 +135,19 @@ class RendererTest extends TestCase
         }
     }
 
+    public function testCacheDirMustNotContainANullByte(): void
+    {
+        // mkdir() throws a ValueError on a NUL byte, which a caller cannot tell
+        // apart from a bug inside this class. The compiler refuses NUL in a
+        // template name for the same reason, so the two now agree.
+        try {
+            new Renderer(new Template(__DIR__ . '/fixtures/views'), new Compiler(), "cache\0dir");
+            $this->fail('should have rejected a cacheDir containing a NUL byte');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('contains a NUL byte', $e->getMessage());
+        }
+    }
+
     public function testCreatesCacheDirAutomatically(): void
     {
         $cacheDir = $this->cacheDir . '/nested/cache';

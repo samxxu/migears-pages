@@ -29,6 +29,14 @@ class Renderer
         string $cacheDir,
     ) {
         $this->cacheDir = rtrim($cacheDir, '/\\');
+        // A NUL byte is not a path at all: the mkdir() below throws a ValueError on
+        // one, and the caller cannot tell that apart from a bug inside this class.
+        // The compiler refuses NUL in a template name for the same reason.
+        if (str_contains($this->cacheDir, "\0")) {
+            throw new \InvalidArgumentException(
+                'cacheDir must be a directory path; this one contains a NUL byte, which no filesystem call accepts'
+            );
+        }
         // An empty value or "/" reduces to nothing once the trailing separators
         // are trimmed, and the failure then surfaced as a directory error with no
         // name in it — much later, and nowhere near the call that caused it.
