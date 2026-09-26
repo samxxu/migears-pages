@@ -246,6 +246,80 @@ final class CompilerTest extends TestCase
         );
     }
 
+    public function testLiteralAttributeValuesAreEscapedLikePassThroughOnes(): void
+    {
+        // One standard for every attribute value: the DSL's own literals meet the
+        // same bar as el's pass-through ones. A quote in an href used to close the
+        // attribute, so the rest of the line was read as markup.
+        $this->assertSame(
+            '<a href="x&quot; onclick=&quot;alert(1)" target="_blank">Go</a>',
+            $this->compile(['body' => [[
+                'type' => 'link',
+                'href' => 'x" onclick="alert(1)',
+                'text' => 'Go',
+                'target' => '_blank',
+            ]]])
+        );
+        $this->assertStringContainsString(
+            '<form action="?a=1&amp;b=2" method="post">',
+            $this->compile(['body' => [[
+                'type' => 'form',
+                'action' => '?a=1&b=2',
+                'fields' => [['name' => 'q', 'label' => 'Q']],
+            ]]])
+        );
+    }
+
+    public function testFieldLiteralAttributesAreEscaped(): void
+    {
+        $out = $this->compile(['body' => [[
+            'type' => 'form',
+            'action' => '/save',
+            'fields' => [
+                ['name' => 'a"b', 'label' => 'Name', 'placeholder' => 'x"y'],
+                ['name' => 'role', 'label' => 'Role', 'input' => 'select', 'options' => ['a"b' => 'A']],
+                ['name' => 'go', 'label' => 'Save "now"', 'input' => 'submit'],
+            ],
+        ]]]);
+
+        $this->assertStringContainsString('name="a&quot;b" id="a&quot;b"', $out);
+        $this->assertStringContainsString('placeholder="x&quot;y"', $out);
+        $this->assertStringContainsString('<option value="a&quot;b">A</option>', $out);
+        $this->assertStringContainsString('<input type="submit" value="Save &quot;now&quot;">', $out);
+    }
+
+    public function testElementTextStaysAuthorControlled(): void
+    {
+        // Only attribute values are escaped. Element text is written by the author
+        // — the text node documents that it may carry HTML — so escaping it here
+        // would turn deliberate markup into visible angle brackets.
+        $this->assertSame(
+            '<a href="/x"><b>Bold</b></a>',
+            $this->compile(['body' => [['type' => 'link', 'href' => '/x', 'text' => '<b>Bold</b>']]])
+        );
+        $this->assertStringContainsString(
+            '<label for="q">a" b</label>',
+            $this->compile(['body' => [[
+                'type' => 'form',
+                'action' => '/save',
+                'fields' => [['name' => 'q', 'label' => 'a" b']],
+            ]]])
+        );
+    }
+
+    public function testAttributeNamesThatCannotBeNamesAreRejected(): void
+    {
+        // The name is written into the tag as written, so a name that cannot be
+        // one produces markup no browser can read: whitespace ends the name and
+        // everything after it is read as a second attribute.
+        foreach (['data-x y', "x-on:cli\tck", 'data-x<y', 'data-x=y', 'data-x/y', "data-x\0y", 'data-x"y'] as $name) {
+            $this->expectError(
+                ['body' => [['type' => 'el', 'tag' => 'div', $name => 'v', 'body' => []]]],
+                'is not a legal attribute name'
+            );
+        }
+    }
+
     public function testValuelessAttributeUsesNull(): void
     {
         $this->assertSame(
@@ -539,6 +613,29 @@ final class CompilerTest extends TestCase
         $this->assertStringContainsString('User management', $out);
         $this->assertStringContainsString("\$this->start('content')", $out);
         $this->assertStringContainsString('Body', $out);
+    }
+
+    public function testSectionNamesAreTrimmedSoTheLayoutCanFillThem(): void
+    {
+        // A section is filled by name, and " content " never matched a layout's
+        // <section name="content">: the page rendered an empty region with nothing
+        // to show for it. The XML front end trims; this is the same rule for the
+        // array DSL and the YAML front end.
+        $out = $this->compile([
+            'layout' => 'layout/main',
+            'sections' => [' content ' => [['type' => 'text', 'text' => 'Body']]],
+        ]);
+
+        $this->assertStringContainsString("\$this->start('content')", $out);
+        $this->assertStringNotContainsString("' content '", $out);
+    }
+
+    public function testEmptySectionNameIsRejected(): void
+    {
+        $this->expectError(
+            ['layout' => 'layout/main', 'sections' => ['   ' => [['type' => 'text', 'text' => 'Body']]]],
+            'is empty; a layout can only fill a named section'
+        );
     }
 
     public function testTitleAndTitleSectionConflictRejected(): void

@@ -112,6 +112,13 @@ Keys on a node are handled in three categories:
 
 Passthrough values are first normalized into a shape an HTML attribute can carry, then escaped (`ENT_COMPAT`, keeping single quotes readable), and only **then** interpolated with `{{ }}` — the order cannot be reversed, or the quotes inside the `## ##` sugar would be mangled by escaping. Escaping also sets `ENT_SUBSTITUTE`: without it, malformed UTF-8 makes `htmlspecialchars()` return an empty string and the attribute silently loses its value — the surrounding text included.
 
+Two rules sit in this layer rather than in a front end, because every attribute the node model emits passes through it:
+
+- **A name must be a legal attribute name.** It is written into the tag as written, so whitespace would end it and everything after it would be read as a second attribute; quotes, `<`, `>`, `/`, `=` and control bytes are refused for the same reason. XML refuses these while parsing (its own `ATTR_NAME_PATTERN`, with a message about `<attr name>`), but a quoted YAML key and the array DSL can spell any name, so the check has to happen here as well.
+- **The DSL's own literal attributes are escaped like passthrough ones**: `link.href` / `target`, `form.action`, `field.name` / `id` / `placeholder`, the submit button's `value` and `option`'s value. A quote in an `href` used to close the attribute, and the rest of the line was then read as markup — the page compiled into a tag nobody wrote. Element text (`text`, `heading`, `link.text`, `label`, option text, `table.empty`, `column.label`) is **not** escaped: that part is written by the author, exactly as the `text` node documents.
+
+Section names are trimmed for the same reason: a section is filled by name, so `" content "` compiled to `start(' content ')`, which no layout section ever read — the page rendered an empty region with nothing to show for it. An empty name is a compile error, since no layout can fill it.
+
 | Value type | Normalization result |
 |------------|----------------------|
 | string | as-is |
@@ -460,6 +467,8 @@ Error classes:
 | Brace mismatch | interpolation contains `{{{` or `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
 | Attribute with no mount point | a passthrough attribute on a node that outputs no tag | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
 | Attribute value type error | a passthrough value is not a scalar | attribute "x" must have a scalar value, got array |
+| Illegal attribute name | the emitted name cannot be a name (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes) | "data-x y" is not a legal attribute name |
+| Empty section name | a `sections` key that is empty after trimming, so no layout can fill it | sections: section name '   ' is empty; a layout can only fill a named section |
 | Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined twice |
 
 It fails fast: the first error throws, and the `CompileException` carries the path from root to node.
@@ -524,6 +533,9 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Literal | literal fields like `field.label`, `table.empty`, `option`, and the keys of `component.data` with `{{ }}` error |
 | Template-layer marker | `##` in text, attribute values, and component values is escaped as template-layer syntax (output contains `\##`) and renders verbatim without being taken as an expression (Renderer end-to-end asserts `## Note ##` and `### $user["name"] ###`); `##` in a literal field errors with a path; a single `#` needs no escaping |
 | Passthrough | Alpine / Vue / htmx / Livewire directives and `class`/`id`/`style` passthrough; `@click` as-is; value escaping; interpolation inside values; scalar normalization (integer/boolean/null); duplicate attribute error |
+| Attribute names | a name that cannot be one (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes) errors in the array DSL and in YAML, matching the XML front end's parse-time check |
+| Literal attribute escaping | a quote or `&` in `link.href` / `link.target` / `form.action` / `field.name` / `id` / `placeholder` / `option` value is escaped in the artifact, while element text (`link.text`, `label`, option text) is left as written |
+| Section names | a padded `sections` key is trimmed so a layout can fill it; a name that is empty after trimming errors |
 | Passthrough misuse | unknown key error; attribute on a tag-less node error; unknown root field error |
 | el | with body / empty body / missing tag error / invalid tag error / body as null error |
 | Targeted interception | `x-on-click` errors and suggests `x-on:click` or `@click` |
@@ -659,6 +671,13 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 ### 5.2 透传值的归一与转义
 
 透传值先按 HTML 属性可承载的形态归一，再转义（`ENT_COMPAT`，保留单引号可读性），**最后**做 `{{ }}` 插值——顺序不能反，否则 `## ##` 糖语法里的引号会被转义破坏。转义同时带 `ENT_SUBSTITUTE`：否则非法 UTF-8 会让 `htmlspecialchars()` 返回空串，属性连同周围的文本一起被悄悄清空。
+
+名字与 DSL 自带的字面量属性各有一条规则，两条都放在这一层而不是各前端——节点模型写出的每个属性都要经过这里：
+
+- **名字必须是合法的属性名。** 它按原样写进标签：空白会结束名字、后面的内容被当成第二个属性；引号、`<`、`>`、`/`、`=` 与控制字符同理被拒。XML 前端在解析期就用 `ATTR_NAME_PATTERN` 拒掉这些形态（消息针对 `<attr name>`），但 YAML 的引号键与数组 DSL 可以写出任何名字，所以这里必须再查一遍。
+- **DSL 自带的字面量属性按与透传值相同的方式转义**：`link.href` / `target`、`form.action`、`field.name` / `id` / `placeholder`、提交按钮的 `value`、`option` 的 value。没有它时 `href` 里的一个引号就会提前结束属性，行尾被读成标记——页面会编译成谁也没写过的标签。元素文本（`text`、`heading`、`link.text`、`label`、option 文本、`table.empty`、`column.label`）**不转义**：那部分由作者书写，与 `text` 节点的说明一致。
+
+section 名同样做 trim：section 是按名字填充的，`" content "` 编译成 `start(' content ')`，布局里的任何 section 都读不到，表现为一块静默空白。trim 后为空属编译错误——没有任何布局能填上它。
 
 | 值类型 | 归一结果 |
 |--------|----------|
@@ -1008,6 +1027,8 @@ sections.content[2].columns[2]: a column cannot specify both pop and content
 | 花括号错乱 | 插值出现 `{{{` 或 `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
 | 属性无挂载点 | 透传属性出现在不输出标签的节点上 | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
 | 属性值类型错误 | 透传属性值不是标量 | attribute "x" must have a scalar value, got array |
+| 属性名非法 | 写出的名字不可能成为属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符） | "data-x y" is not a legal attribute name |
+| section 名为空 | `sections` 的键 trim 后为空，没有任何布局能填上 | sections: section name '   ' is empty; a layout can only fill a named section |
 | 重复属性 | 同名透传属性出现两次 | attribute "class" defined twice |
 
 失败即中止（fail-fast）：首个错误抛出，`CompileException` 携带从根到节点的路径。
@@ -1072,6 +1093,9 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 字面量 | `field.label`、`table.empty`、`option`、`component.data` 的键等字面量字段写 `{{ }}` 报错 |
 | 模板层标记 | 文本、属性值、组件值里出现 `##` 时按模板层语法转义（产物含 `\##`），渲染后原样输出且不被当作表达式（Renderer 端到端断言 `## 说明 ##` 与 `### $user["name"] ###`）；字面量字段里出现 `##` 报错并带路径；单个 `#` 不需转义 |
 | 透传 | Alpine / Vue / htmx / Livewire 指令与 `class`/`id`/`style` 透传；`@click` 原样；值转义；值内插值；标量归一（整数/布尔/空值）；重复属性报错 |
+| 属性名 | 数组 DSL 与 YAML 里写不出合法属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符）时报错，与 XML 前端的解析期检查一致 |
+| 字面量属性转义 | `link.href` / `link.target` / `form.action` / `field.name` / `id` / `placeholder` / `option` 的 value 里的引号与 `&` 在产物中被转义；元素文本（`link.text`、`label`、option 文本）保持原样 |
+| section 名 | `sections` 键带多余空白时被 trim，使布局能填上；trim 后为空报错 |
 | 透传误用 | 未知键报错；无标签节点承载属性报错；页面根未知字段报错 |
 | el | 带 body / 空 body / 缺 tag 报错 / 非法 tag 报错 / body 写成 null 报错 |
 | 定向拦截 | `x-on-click` 报错并提示 `x-on:click` 或 `@click` |

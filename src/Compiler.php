@@ -78,6 +78,19 @@ class Compiler
     private const BIND_PATTERN = '/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[\d+\])*$/';
 
     /**
+     * An attribute name is written into the tag verbatim, so a name that cannot
+     * be one turns the artifact into markup no browser can read: whitespace ends
+     * the name and everything after it becomes a second attribute, a quote closes
+     * the value early, "<" / ">" / "/" / "=" start something that is not a name,
+     * and a control byte is not a character a name can carry at all. The XML
+     * front end refuses these while it parses (its own pattern, which catches the
+     * same shapes with a message about the <attr> syntax); the array DSL and the
+     * YAML front end — where a quoted key can spell any name — reach the compiler
+     * unchecked unless the check sits where the name is emitted.
+     */
+    private const ATTR_NAME_PATTERN = '/^[^\s"\'\x00-\x1F\x7F<>\/=]+$/';
+
+    /**
      * Alpine spells these directives with a colon. The hyphen form is not an
      * Alpine attribute at all, so a bare 'x-' prefix rule would forward it
      * happily and the directive would then do nothing — the silent failure we
@@ -378,12 +391,38 @@ class Compiler
         }
     }
 
+    /**
+     * Escape an author-written value that lands in a double-quoted attribute.
+     *
+     * Pass-through attributes already go through renderAttr(); these are the DSL's
+     * own literal attributes (href, action, name, id, placeholder, option value),
+     * and they have to meet the same bar. Without it `href: 'x" onclick="alert(1)'`
+     * closed the attribute and the rest of the line was read as markup — the page
+     * compiled, and the tag it produced was not the one that was written.
+     *
+     * Escaped before interpolation, for the reason renderAttr() documents: the
+     * ## ## sugar must reach the template engine unmangled.
+     */
+    private function escapeAttrValue(string $value, string $path): string
+    {
+        return $this->interpolate(htmlspecialchars($value, ENT_COMPAT | ENT_SUBSTITUTE), $path);
+    }
+
+    /** @param array<string, mixed> $n node the attribute belongs to (only used for error messages) */
     private function renderAttr(string $name, string $value, array $n, string $path, bool $emitsTag): string
     {
         if (! $emitsTag) {
             $this->error("{$path}: node " . $this->nodeRef((string) $n['type'])
                 . " emits no tag and cannot carry attribute \"{$name}\"; wrap the content in "
                 . $this->containerRef('el'));
+        }
+
+        // The name reaches the artifact as written, so it is checked here rather
+        // than at each call site: this is the one place every attribute the
+        // compiler emits from the node model passes through.
+        if (! preg_match(self::ATTR_NAME_PATTERN, $name)) {
+            $this->error("{$path}: \"{$name}\" is not a legal attribute name; an attribute name may not contain "
+                . 'whitespace, quotes, "<", ">", "/", "=" or control characters, because it is emitted exactly as written');
         }
 
         // Escape the literal part first, then interpolate: the ## ## sugar must
@@ -473,8 +512,19 @@ class Compiler
             $ordered[] = ['name' => 'title', 'nodes' => [['type' => 'text', 'text' => $title]]];
         }
         foreach ($sections as $name => $nodes) {
+            // A section is filled by name, so the name has to match the one the
+            // layout asks for character for character: " content " compiles to
+            // start(' content '), which no <section name="content"> ever reads,
+            // and the page just renders an empty region with nothing to show for
+            // it. The XML front end trims for exactly this reason; doing it here
+            // is what keeps the array DSL and both front ends agreeing.
+            $sectionName = trim((string) $name);
+            if ($sectionName === '') {
+                $this->error('sections: section name ' . var_export((string) $name, true)
+                    . ' is empty; a layout can only fill a named section');
+            }
             $ordered[] = [
-                'name' => (string) $name,
+                'name' => $sectionName,
                 'nodes' => $this->requireList($nodes, 'sections.' . $name, 'a node tree array'),
             ];
         }
@@ -543,20 +593,25 @@ class Compiler
         return "<h{$level}{$attrs}>{$text}</h{$level}>";
     }
 
+    /** @param array<string, mixed> $n link node */
     private function compileLink(array $n, string $path): string
     {
-        $href = $this->interpolate($this->requireString($n, 'href', $path), $path);
+        // href and target are attributes; text is element text, which stays
+        // author-controlled (see the text node) — escaping it would turn the
+        // markup an author wrote on purpose into visible angle brackets.
+        $href = $this->escapeAttrValue($this->requireString($n, 'href', $path), $path);
         $text = $this->interpolate($this->requireString($n, 'text', $path), $path);
 
         $out = '<a href="' . $href . '"';
         if (array_key_exists('target', $n)) {
-            $out .= ' target="' . $this->interpolate($this->requireString($n, 'target', $path), $path) . '"';
+            $out .= ' target="' . $this->escapeAttrValue($this->requireString($n, 'target', $path), $path) . '"';
         }
         $out .= $this->forwardedAttrs($n, ['href', 'text', 'target'], $path, true);
 
         return $out . '>' . $text . '</a>';
     }
 
+    /** @param array<string, mixed> $n if node */
     private function compileIf(array $n, string $path): string
     {
         $when = $this->requireString($n, 'when', $path);
@@ -603,9 +658,10 @@ class Compiler
         return "<?php {$loop}\$" . $as . "): ?>\n" . $this->compileNodes($body, $path . '.body') . "\n<?php endforeach ?>";
     }
 
+    /** @param array<string, mixed> $n form node */
     private function compileForm(array $n, string $path): string
     {
-        $action = $this->interpolate($this->requireString($n, 'action', $path), $path);
+        $action = $this->escapeAttrValue($this->requireString($n, 'action', $path), $path);
         // Check the type before touching the value: casting first would emit a
         // PHP warning ("Array to string conversion") and then report a type
         // fault with the enum message, which names the wrong problem.
@@ -636,17 +692,22 @@ class Compiler
         return $out;
     }
 
+    /** @param array<string, mixed> $n field node */
     private function compileField(array $n, string $path): string
     {
         $this->requireStructuralType($n, 'field', $path);
-        $name = $this->literal($this->requireString($n, 'name', $path), $path, 'name');
+        // name and id only ever land in name="" / id="" / for="" attributes, so
+        // they are escaped once here; label is element text in every branch but
+        // the submit button, so it is escaped where it is used as an attribute
+        // value instead of in place.
+        $name = $this->escapeAttrValue($this->literal($this->requireString($n, 'name', $path), $path, 'name'), $path);
         $label = $this->literal($this->requireString($n, 'label', $path), $path, 'label');
         // The label's `for` and the control's `id` are the same identity — and it
         // defaults to the field name, which is what keeps HTML hooks and the DTO
         // key aligned. An explicit id overrides it instead of being emitted a
         // second time.
         $id = array_key_exists('id', $n)
-            ? $this->literal($this->requireString($n, 'id', $path), $path, 'id')
+            ? $this->escapeAttrValue($this->literal($this->requireString($n, 'id', $path), $path, 'id'), $path)
             : $name;
         $extra = $this->forwardedAttrs(
             $n,
@@ -684,7 +745,7 @@ class Compiler
         }
 
         if ($input === 'submit') {
-            return '  <input type="submit" value="' . $label . '"'
+            return '  <input type="submit" value="' . $this->escapeAttrValue($label, $path) . '"'
                 . (array_key_exists('id', $n) ? ' id="' . $id . '"' : '')
                 . $extra . '>';
         }
@@ -702,7 +763,7 @@ class Compiler
                 $out .= ' value="' . $value . '"';
             }
             if (array_key_exists('placeholder', $n)) {
-                $out .= ' placeholder="' . $this->interpolate($this->requireString($n, 'placeholder', $path), $path) . '"';
+                $out .= ' placeholder="' . $this->escapeAttrValue($this->requireString($n, 'placeholder', $path), $path) . '"';
             }
             if ($required) {
                 $out .= ' required';
@@ -748,7 +809,7 @@ class Compiler
                     $this->error("{$path}: option \"{$optValue}\" text must be a string, got " . gettype($optLabel));
                 }
                 $optLabel = $this->literal($optLabel, $path, 'option text');
-                $out .= "\n    <option value=\"" . $optValue . '">' . $optLabel . '</option>';
+                $out .= "\n    <option value=\"" . $this->escapeAttrValue($optValue, $path) . '">' . $optLabel . '</option>';
             }
 
             return $out . "\n  </select>";
@@ -835,6 +896,8 @@ class Compiler
      * Generic element node. text / if / each emit no tag of their own, so this
      * is the only way to hang attributes on a wrapper — which is where front-end
      * state containers belong (Alpine's x-data, Vue's v-scope).
+     *
+     * @param array<string, mixed> $n el node
      */
     private function compileEl(array $n, string $path): string
     {
@@ -1102,12 +1165,15 @@ class Compiler
      * take the default and leave no trace, while the same shape in `el.body` is
      * an error. A null now travels on to the field's own type check, which names
      * the field and the value it received.
+     *
+     * @param array<string, mixed> $n the node carrying the optional field
      */
     private function optional(array $n, string $key, mixed $default): mixed
     {
         return array_key_exists($key, $n) ? $n[$key] : $default;
     }
 
+    /** @param array<string, mixed> $n the node carrying the required string field */
     private function requireString(array $n, string $key, string $path): string
     {
         if (! isset($n[$key]) || ! is_string($n[$key])) {
@@ -1122,6 +1188,8 @@ class Compiler
      * variant that position is the element name — so a written type must match
      * it instead of being silently ignored. Keeps the node model identical to
      * the YAML variant.
+     *
+     * @param array<string, mixed> $n nested structure (field / column) node
      */
     private function requireStructuralType(array $n, string $expected, string $path): void
     {
@@ -1139,6 +1207,8 @@ class Compiler
      * line. Each of these used to compile and then leave no trace in the
      * output, so the author's intent disappeared without a word — naming the
      * misuse where it happens is the only honest answer.
+     *
+     * @param array<string, mixed> $n field node being scoped
      */
     private function assertFieldScope(array $n, string $input, string $path): void
     {
