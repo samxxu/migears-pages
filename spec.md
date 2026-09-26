@@ -110,7 +110,7 @@ Keys on a node are handled in three categories:
 
 ### 5.2 Normalization and escaping of passthrough values
 
-Passthrough values are first normalized into a shape an HTML attribute can carry, then escaped (`ENT_COMPAT`, keeping single quotes readable), and only **then** interpolated with `{{ }}` — the order cannot be reversed, or the quotes inside the `## ##` sugar would be mangled by escaping.
+Passthrough values are first normalized into a shape an HTML attribute can carry, then escaped (`ENT_COMPAT`, keeping single quotes readable), and only **then** interpolated with `{{ }}` — the order cannot be reversed, or the quotes inside the `## ##` sugar would be mangled by escaping. Escaping also sets `ENT_SUBSTITUTE`: without it, malformed UTF-8 makes `htmlspecialchars()` return an empty string and the attribute silently loses its value — the surrounding text included.
 
 | Value type | Normalization result |
 |------------|----------------------|
@@ -145,6 +145,10 @@ Writing a list as a mapping (a single node without `[ ]` wrapping, or a bare map
 Writing a mapping as a list (`sections` followed directly by a node, `component.data` followed directly by several values) similarly has no key to lean on; it used to fall through to a deeper error like "section name 0" / "data key 0". Such entry points are guarded by `requireMap()`: an empty array is an empty mapping (`[]` is both an empty list and an empty mapping, holding nothing that could be misread). `field.options` is a deliberate exception — when option values are plain numbers (e.g. `value="0"`), PHP keys themselves are `0..n-1` and indistinguishable from a list, so there only "must be an array" is checked.
 
 The accompanying scalar type guards work the same way: `layout`, `title` must be strings, `sections` must be a mapping, `field.required` must be a boolean, `option` text must be a string. These values used to be handled by `(string)` casts or `=== true` comparisons, which either leaked PHP warnings (`Array to string conversion`) or silently ignored mismatches — both forbidden by this module.
+
+**Defaults apply to absent keys only.** `level:`, `as:`, `method:`, `input:` and `rows:` written with nothing after them (a YAML key left empty) used to fall back to the default and leave no trace, while the same shape in `el.body` was an error. A present-but-null value now travels on to the field's own type check, which names the field and what it received (`heading level must be an integer from 1 to 6, got NULL`); only a missing key takes the default.
+
+**The artifact must be parseable PHP.** Values that reach a PHP string literal — section names, `layout`, component names, `component.data` keys — are escaped with the backslash first, then the quote. Escaping quotes alone left a trailing backslash free to escape the closing quote: the compiler reported success and wrote PHP that cannot be parsed.
 
 **Overall contract**: every compile-time error must be a path-carrying `CompileException`; no PHP warning may leak into the output, and no raw `TypeError` may be thrown for a type mismatch.
 
@@ -370,6 +374,7 @@ echo $renderer->render($page, $data);
 - Internally it does: `compile()` → write to `$cacheDir` (content-addressed: `page_<md5(source)>.tpl.php`, not rewritten while the declaration is unchanged) → `$template->render()`.
 - On construction it registers `$cacheDir` into `$template`'s search paths; layouts and components still resolve through the template paths the user already configured. Because it is an unshift, the derived directory comes **before** the user's template directories: normal names (`page_<md5>`) do not collide, but the direction is "derivatives win".
 - Rendering the same declaration twice hits the cache file and does one disk write.
+- `$cacheDir` is validated on construction: `''`, `'\'` and `'///'` reduce to nothing once the trailing separators are trimmed, and that used to surface much later as a directory error with no name in it. It now throws `\InvalidArgumentException` naming the argument.
 - Two failures are reported from this path as `\RuntimeException`: `cannot create cache directory: <dir>` when the directory cannot be made, and `cannot write compiled page: <file>` when the write fails. Both used to be dropped, leaving the render to fail one step later as a template the engine could not find.
 - The cache **only ever grows**: a changed declaration writes a new file, and old ones are not auto-pruned. `clearCache()` deletes the `page_*.tpl.php` this class wrote and returns the deleted count (repeated calls return 0); the cache directory itself stays, and pages are recompiled on the next `render()`. Clearing matches that name exactly, so hand-written templates, foreign files, and the template compiler's own outputs sharing the directory are unaffected. The template compiler's own outputs are managed by `Template` and are outside this API — to reset both at once, deleting the whole cache directory remains safe.
 
@@ -444,6 +449,7 @@ Error classes:
 | method type error | `form.method` not a string (validated before any cast, no PHP warning leaks) | method must be the string "get" or "post", got array |
 | List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list |
 | Field value type error | `field.required` not a boolean, `option` text not a string | required must be a boolean, got string |
+| Present-but-null field | an optional field is present but null (an emptied YAML key) where a default would otherwise apply — only an absent key takes the default | body[0]: heading level must be an integer from 1 to 6, got NULL |
 | Literal error | `{{ }}` written in a literal field | "empty" is a literal field and does not support {{ }} interpolation |
 | Template-layer marker | `##` in a literal field (`label` / `name` / `tag` / `empty` / option, etc.) — these fields are written verbatim with no place to escape | body[0].fields[0]: "label" is a literal and may not contain "##" (template-level syntax) |
 | Mapping shape error | `sections` / `component.data` written as a list | page: sections must be a map of section name to node tree (a key-value map), but got a list |
@@ -507,6 +513,10 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Page root | body not an array or written as a single node mapping, layout / title not a string, sections not a mapping, sections value not a list (including null) |
 | Collection shape | then / else / body / content / sections values / fields / columns written as a keyed mapping give a readable error, not falling through to `content[type]: node must be an object`; `sections`, `component.data` written as a list give a readable error |
 | Warning leakage | data-driven assertions over all malformed inputs: only a `CompileException` (no `TypeError`) and zero PHP warnings |
+| Present-but-null | `level` / `as` / `method` / `input` / `rows` / `el.body` present but null each error naming the field, while absent keys still take their defaults |
+| Artefact validity | a trailing backslash in a section name or a component data key still compiles to PHP that `php -l` accepts |
+| Attribute escaping | malformed UTF-8 keeps the attribute's surrounding text (`ENT_SUBSTITUTE`) instead of emptying the value |
+| Renderer cacheDir | `''`, `'\'` and `'///'` are rejected on construction with an `InvalidArgumentException` |
 | Layout | layout+sections / standalone body / both together error / both missing error / title section / title and sections.title together error |
 | Component | no data / data interpolation (PHP-context concatenation) / data literal / non-string data value error / `{{ }}` in a data key error / data written as a list error |
 | Binding | path-grammar boundaries (invalid characters, empty segment, `!` only in when) |
@@ -648,7 +658,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 ### 5.2 透传值的归一与转义
 
-透传值先按 HTML 属性可承载的形态归一，再转义（`ENT_COMPAT`，保留单引号可读性），**最后**做 `{{ }}` 插值——顺序不能反，否则 `## ##` 糖语法里的引号会被转义破坏。
+透传值先按 HTML 属性可承载的形态归一，再转义（`ENT_COMPAT`，保留单引号可读性），**最后**做 `{{ }}` 插值——顺序不能反，否则 `## ##` 糖语法里的引号会被转义破坏。转义同时带 `ENT_SUBSTITUTE`：否则非法 UTF-8 会让 `htmlspecialchars()` 返回空串，属性连同周围的文本一起被悄悄清空。
 
 | 值类型 | 归一结果 |
 |--------|----------|
@@ -683,6 +693,10 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 映射被写成列表（`sections` 直接跟一个节点、`component.data` 直接跟若干值）同样没有键名可依，此前会一路走到更深处报出「section 名 0」「data 键 0」。这类入口统一由 `requireMap()` 守卫：空数组视为空映射（`[]` 既是空列表也是空映射，其中没有可被误读的条目）。`field.options` 是刻意的例外——选项值为纯数字时（如 `value="0"`）PHP 键本身就是 `0..n-1`，与列表形态无法区分，故该处只校验必须是数组。
 
 配套的标量类型守卫同理：`layout`、`title` 必须是字符串，`sections` 必须是映射，`field.required` 必须是布尔，`option` 文本必须是字符串。这些值此前靠 `(string)` 强转或 `=== true` 比较处理，遇到不符的值要么泄漏 PHP 警告（`Array to string conversion`），要么被静默忽略——两者都是本模块明令禁止的。
+
+**默认值只对「缺键」生效。** `level:`、`as:`、`method:`、`input:`、`rows:` 写出来却为空（YAML 键留空）时，此前会回落到默认值、不留痕迹，而同种形状出现在 `el.body` 上却会报错。现在这种「键在但值为 null」会一路走到该字段自己的类型校验，报出字段名与实际收到的值（`heading level must be an integer from 1 to 6, got NULL`）；只有键确实缺失才取默认值。
+
+**产物必须是可解析的 PHP。** 进入 PHP 字符串字面量的值——section 名、`layout`、组件名、`component.data` 的键——先转义反斜杠，再转义引号。只转义引号时，结尾的反斜杠会转义掉收尾引号：编译器报成功，写出的 PHP 却无法解析。
 
 **总契约**：编译期任何错误都必须是带节点路径的 `CompileException`；不得有 PHP 警告泄漏到输出，也不得因类型不符抛出原始 `TypeError`。
 
@@ -908,6 +922,7 @@ echo $renderer->render($page, $data);
 - 内部完成：`compile()` → 写入 `$cacheDir`（内容寻址：`page_<md5(source)>.tpl.php`，声明不变不重写）→ `$template->render()`。
 - 构造时把 `$cacheDir` 注册进 `$template` 的搜索路径，布局与组件仍走用户已配置的模板路径。因为是 unshift，派生目录排在用户模板目录**之前**：正常命名（`page_<md5>`）不会碰撞，但方向上是「派生物优先」。
 - 两次渲染同一声明时命中缓存文件，只做一次磁盘写入。
+- `$cacheDir` 在构造时校验：`''`、`'\'`、`'///'` 去掉尾部斜杠后什么都不剩，此前会在很久之后报出一个没有名字的目录错误。现在直接抛 `\InvalidArgumentException` 并点名该参数。
 - 这条路径上的两类失败都以 `\RuntimeException` 报告：目录建不出来时是 `cannot create cache directory: <dir>`，写盘失败时是 `cannot write compiled page: <file>`。二者过去都被丢弃，于是渲染在下一步才失败，表现为引擎找不到模板。
 - 缓存**只增不减**：声明一变就写新文件，旧文件不自动清理。`clearCache()` 删除本类写出的 `page_*.tpl.php` 并返回删除数量（重复调用返回 0），缓存目录本身保留，页面在下次 `render()` 时重新编译回填；清理只按该命名精确匹配，因此共享该目录的手写模板、外来文件与模板编译器产物都不受影响。模板编译器自身的产物归 `Template` 管理，不在本 API 范围内——要一次性重置两处，整体删除缓存目录仍然安全。
 
@@ -982,6 +997,7 @@ sections.content[2].columns[2]: a column cannot specify both pop and content
 | method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method must be the string "get" or "post", got array |
 | 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list |
 | 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required must be a boolean, got string |
+| 键在但值为 null | 可选字段写出来却为空（YAML 键留空），而该处本会取默认值——只有缺键才取默认值 | body[0]: heading level must be an integer from 1 to 6, got NULL |
 | 字面量错误 | 字面量字段写了 `{{ }}` | "empty" is a literal field and does not support {{ }} interpolation |
 | 模板层标记 | 字面量字段（`label` / `name` / `tag` / `empty` / option 等）里出现 `##`——这些字段原样写入产物，没有可转义的位置 | body[0].fields[0]: "label" is a literal and may not contain "##" (template-level syntax) |
 | 映射形态错误 | `sections` / `component.data` 写成列表 | page: sections must be a map of section name to node tree (a key-value map), but got a list |
@@ -1045,6 +1061,10 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
 | 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
+| 键在但值为 null | `level` / `as` / `method` / `input` / `rows` / `el.body` 写出来却为空时报错并点名字段；缺键时仍取默认值 |
+| 产物有效性 | section 名或组件 data 键以反斜杠结尾时，产物仍通过 `php -l` |
+| 属性转义 | 非法 UTF-8 时属性里的周围文本仍在（`ENT_SUBSTITUTE`），值不被清空 |
+| Renderer cacheDir | `''`、`'\'`、`'///'` 在构造时被 `InvalidArgumentException` 拒绝 |
 | 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section / title 与 sections.title 同存报错 |
 | 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 / data 键写 `{{ }}` 报错 / data 写成列表报错 |
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |

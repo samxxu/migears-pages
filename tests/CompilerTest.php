@@ -41,6 +41,58 @@ final class CompilerTest extends TestCase
         );
     }
 
+    /**
+     * A default applies when the key is absent, not when the key is present but
+     * null. `level:` with nothing after it used to take the default and leave no
+     * trace, while the same shape in `el.body` is an error — one contract, two
+     * behaviours. The null now reaches the field's own type check.
+     */
+    public function testPresentButNullOptionalFieldsAreRejected(): void
+    {
+        $cases = [
+            'level' => [
+                ['body' => [['type' => 'heading', 'level' => null, 'text' => 'T']]],
+                'heading level must be an integer from 1 to 6, got NULL',
+            ],
+            'each as' => [
+                ['body' => [['type' => 'each', 'items' => 'u', 'as' => null, 'body' => []]]],
+                'each as must be a valid variable name',
+            ],
+            'method' => [
+                ['body' => [['type' => 'form', 'action' => '/s', 'method' => null, 'fields' => [['name' => 'a', 'label' => 'A']]]]],
+                'method must be the string "get" or "post", got NULL',
+            ],
+            'input' => [
+                ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'a', 'label' => 'A', 'input' => null]]]]],
+                'invalid input type "NULL"',
+            ],
+            'rows' => [
+                ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [['name' => 'b', 'label' => 'B', 'input' => 'textarea', 'rows' => null]]]]],
+                'textarea rows must be a positive integer',
+            ],
+            'table as' => [
+                ['body' => [['type' => 'table', 'items' => 'u', 'as' => null, 'columns' => [['label' => 'A', 'pop' => 'a']]]]],
+                'table as must be a valid variable name',
+            ],
+            'el body (the reference behaviour)' => [
+                ['body' => [['type' => 'el', 'tag' => 'div', 'body' => null]]],
+                'must be a node tree array, got NULL',
+            ],
+        ];
+
+        foreach ($cases as $field => [$page, $needle]) {
+            try {
+                $this->compile($page);
+                $this->fail("a null {$field} should have failed to compile");
+            } catch (CompileException $e) {
+                $this->assertStringContainsString($needle, $e->getMessage(), $field);
+            }
+        }
+
+        // Absent keys still take their default.
+        $this->assertSame('<h1>T</h1>', $this->compile(['body' => [['type' => 'heading', 'text' => 'T']]]));
+    }
+
     public function testLinkInterpolatesHrefAndText(): void
     {
         $this->assertSame(
@@ -120,6 +172,49 @@ final class CompilerTest extends TestCase
 
         $this->assertStringContainsString('foreach ($groups ?? [] as $g)', $out);
         $this->assertStringContainsString("foreach (\$g['members'] ?? [] as \$m)", $out);
+    }
+
+    /**
+     * `str()` escaped quotes but not backslashes, so a value ending in one escaped
+     * the closing quote: the compiler reported success and wrote PHP that cannot
+     * be parsed. Section names and component data keys are the two spellings that
+     * reach it with a free-form value.
+     */
+    public function testTrailingBackslashStillProducesParseablePhp(): void
+    {
+        $pages = [
+            'section name' => ['title' => 'T', 'layout' => 'layout/main', 'sections' => ['content\\' => [['type' => 'text', 'text' => 'C']]]],
+            'component data key' => ['body' => [['type' => 'component', 'name' => 'card', 'data' => ['a\\' => 'x']]]],
+        ];
+
+        foreach ($pages as $label => $page) {
+            $out = $this->compile($page);
+
+            $file = tempnam(sys_get_temp_dir(), 'pages') . '.php';
+            file_put_contents($file, $out);
+            $lines = [];
+            $code = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file) . ' 2>&1', $lines, $code);
+            unlink($file);
+
+            $this->assertSame(0, $code, "{$label}: " . implode(' | ', $lines));
+        }
+
+        $this->assertStringContainsString("'content\\\\'", $this->compile($pages['section name']));
+        $this->assertStringContainsString("'a\\\\' =>", $this->compile($pages['component data key']));
+    }
+
+    /**
+     * htmlspecialchars() returns '' for malformed UTF-8 unless ENT_SUBSTITUTE is
+     * set, which emptied the whole attribute value while the page still compiled.
+     */
+    public function testMalformedUtf8KeepsTheAttributeValue(): void
+    {
+        $out = $this->compile(['body' => [['type' => 'el', 'tag' => 'div', 'class' => "a\xFFb"]]]);
+
+        $this->assertStringNotContainsString('class=""', $out);
+        $this->assertStringContainsString('class="a', $out);
+        $this->assertStringContainsString('b"', $out);
     }
 
     public function testElForwardsFrameworkDirectivesVerbatim(): void

@@ -391,7 +391,10 @@ class Compiler
         // ENT_COMPAT (not ENT_QUOTES) keeps single quotes readable — every
         // attribute here is double-quoted, and Alpine expressions are full of
         // single quotes that would otherwise turn into &#039; noise.
-        $value = $this->interpolate(htmlspecialchars($value, ENT_COMPAT), $path);
+        // ENT_SUBSTITUTE keeps malformed UTF-8 from emptying the value: without
+        // it htmlspecialchars() returns '' and the attribute loses its content
+        // without a word.
+        $value = $this->interpolate(htmlspecialchars($value, ENT_COMPAT | ENT_SUBSTITUTE), $path);
 
         return ' ' . $name . '="' . $value . '"';
     }
@@ -529,7 +532,7 @@ class Compiler
 
     private function compileHeading(array $n, string $path): string
     {
-        $level = $n['level'] ?? 1;
+        $level = $this->optional($n, 'level', 1);
         if (! is_int($level) || $level < 1 || $level > 6) {
             $this->error("{$path}: heading level must be an integer from 1 to 6, got " . var_export($level, true));
         }
@@ -578,7 +581,7 @@ class Compiler
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
         $this->forwardedAttrs($n, ['items', 'as', 'index', 'body'], $path, false);   // each emits no tag
-        $as = $n['as'] ?? 'item';
+        $as = $this->optional($n, 'as', 'item');
         if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
             $this->error("{$path}: each as must be a valid variable name");
         }
@@ -606,7 +609,7 @@ class Compiler
         // Check the type before touching the value: casting first would emit a
         // PHP warning ("Array to string conversion") and then report a type
         // fault with the enum message, which names the wrong problem.
-        $method = $n['method'] ?? 'post';
+        $method = $this->optional($n, 'method', 'post');
         if (! is_string($method)) {
             $this->error("{$path}: method must be the string \"get\" or \"post\", got " . gettype($method));
         }
@@ -651,7 +654,7 @@ class Compiler
             $path,
             true
         );
-        $input = $n['input'] ?? 'text';
+        $input = $this->optional($n, 'input', 'text');
         if (! is_string($input) || ! in_array($input, self::INPUT_TYPES, true)) {
             $this->error("{$path}: invalid input type \"" . (is_string($input) ? $input : gettype($input)) . '"');
         }
@@ -720,7 +723,7 @@ class Compiler
         }
 
         if ($input === 'textarea') {
-            $rows = $n['rows'] ?? 4;
+            $rows = $this->optional($n, 'rows', 4);
             if (! is_int($rows) || $rows < 1) {
                 $this->error("{$path}: textarea rows must be a positive integer");
             }
@@ -770,7 +773,7 @@ class Compiler
     private function compileTable(array $n, string $path): string
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
-        $as = $n['as'] ?? 'row';
+        $as = $this->optional($n, 'as', 'row');
         if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
             $this->error("{$path}: table as must be a valid variable name");
         }
@@ -1091,6 +1094,20 @@ class Compiler
         return $value;
     }
 
+    /**
+     * An optional field's value: the default applies when the key is **absent**,
+     * not when it is present but null.
+     *
+     * `level:` with nothing after it (YAML spelling of an emptied key) used to
+     * take the default and leave no trace, while the same shape in `el.body` is
+     * an error. A null now travels on to the field's own type check, which names
+     * the field and the value it received.
+     */
+    private function optional(array $n, string $key, mixed $default): mixed
+    {
+        return array_key_exists($key, $n) ? $n[$key] : $default;
+    }
+
     private function requireString(array $n, string $key, string $path): string
     {
         if (! isset($n[$key]) || ! is_string($n[$key])) {
@@ -1204,7 +1221,10 @@ class Compiler
     /** Escape a value for a PHP single-quoted string. */
     private function str(string $value): string
     {
-        return str_replace("'", "\\'", $value);
+        // The backslash goes first: escaping quotes alone left a trailing
+        // backslash free to escape the closing quote, so the compiler reported
+        // success and the artifact could not be parsed.
+        return str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
     }
 
     /**

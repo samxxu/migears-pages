@@ -29,6 +29,14 @@ class Renderer
         string $cacheDir,
     ) {
         $this->cacheDir = rtrim($cacheDir, '/\\');
+        // An empty value or "/" reduces to nothing once the trailing separators
+        // are trimmed, and the failure then surfaced as a directory error with no
+        // name in it — much later, and nowhere near the call that caused it.
+        if ($this->cacheDir === '') {
+            throw new \InvalidArgumentException(
+                'cacheDir must be a directory path; "' . $cacheDir . '" has nothing left once trailing separators are trimmed'
+            );
+        }
         // The compiled pages live here; register it so render() can find them.
         $this->template->addPath($this->cacheDir);
     }

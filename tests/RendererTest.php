@@ -121,6 +121,20 @@ class RendererTest extends TestCase
         self::assertStringContainsString('&lt;script&gt;', $html);
     }
 
+    public function testCacheDirMustNotReduceToNothing(): void
+    {
+        // '' and '/' both trim down to nothing, and the failure used to surface
+        // much later as a directory error with no name in it.
+        foreach (['', '/', '\\', '///'] as $bad) {
+            try {
+                new Renderer(new Template(__DIR__ . '/fixtures/views'), new Compiler(), $bad);
+                $this->fail('should have rejected cacheDir ' . var_export($bad, true));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('cacheDir must be a directory path', $e->getMessage());
+            }
+        }
+    }
+
     public function testCreatesCacheDirAutomatically(): void
     {
         $cacheDir = $this->cacheDir . '/nested/cache';
