@@ -90,6 +90,22 @@ class Compiler
      */
     private const ATTR_NAME_PATTERN = '/^[^\s"\'\x00-\x1F\x7F<>\/=]+$/';
 
+    /** A loop variable is emitted as a PHP variable, so it is a plain identifier. */
+    private const VAR_NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
+
+    /**
+     * Names a loop variable may not take. "$this" and "$GLOBALS" cannot be
+     * re-assigned at all, so the artefact parses as written and then dies — a
+     * fatal error the compiler would have produced itself. A superglobal name is
+     * accepted by PHP but shadows the real one for the rest of the render, so the
+     * loop would quietly rewrite $_GET rather than hold the iteration's value.
+     *
+     * @var list<string>
+     */
+    private const RESERVED_VARIABLES = [
+        'this', 'GLOBALS', '_GET', '_POST', '_SERVER', '_ENV', '_COOKIE', '_FILES', '_REQUEST', '_SESSION',
+    ];
+
     /**
      * Alpine spells these directives with a colon. The hyphen form is not an
      * Alpine attribute at all, so a bare 'x-' prefix rule would forward it
@@ -644,10 +660,7 @@ class Compiler
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
         $this->forwardedAttrs($n, ['items', 'as', 'index', 'body'], $path, false);   // each emits no tag
-        $as = $this->optional($n, 'as', 'item');
-        if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
-            $this->error("{$path}: each as must be a valid variable name");
-        }
+        $as = $this->loopVariable($this->optional($n, 'as', 'item'), $path, 'each as');
 
         if (! array_key_exists('body', $n)) {
             $this->error("{$path}: each is missing body (a node tree array)");
@@ -656,10 +669,7 @@ class Compiler
 
         $loop = "foreach ({$items} ?? [] as ";
         if (array_key_exists('index', $n)) {
-            $index = $n['index'];
-            if (! is_string($index) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $index)) {
-                $this->error("{$path}: each index must be a valid variable name");
-            }
+            $index = $this->loopVariable($n['index'], $path, 'each index');
             $loop .= '$' . $index . ' => ';
         }
 
@@ -843,10 +853,7 @@ class Compiler
     private function compileTable(array $n, string $path): string
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
-        $as = $this->optional($n, 'as', 'row');
-        if (! is_string($as) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as)) {
-            $this->error("{$path}: table as must be a valid variable name");
-        }
+        $as = $this->loopVariable($this->optional($n, 'as', 'row'), $path, 'table as');
         if (! array_key_exists('columns', $n)) {
             $this->error("{$path}: table is missing columns (an array of columns)");
         }
@@ -1259,6 +1266,26 @@ class Compiler
         if (str_contains($text, '##')) {
             $this->error("{$path}: {$where} is a literal and may not contain \"##\" (template-level syntax)");
         }
+    }
+
+    /**
+     * Check a loop variable before it is written into the artefact, where it
+     * becomes a real PHP variable: it has to be a plain identifier, and not one
+     * PHP will refuse to assign or would rather keep for itself.
+     */
+    private function loopVariable(mixed $value, string $path, string $field): string
+    {
+        if (! is_string($value) || ! preg_match(self::VAR_NAME_PATTERN, $value)) {
+            $this->error("{$path}: {$field} must be a valid variable name");
+        }
+
+        if (in_array($value, self::RESERVED_VARIABLES, true)) {
+            $this->error("{$path}: {$field} must not be \"{$value}\": " . (str_starts_with($value, '_')
+                ? 'a superglobal would be shadowed for the rest of the render'
+                : 'the artefact cannot re-assign it'));
+        }
+
+        return $value;
     }
 
     /**

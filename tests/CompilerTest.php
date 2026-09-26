@@ -1209,6 +1209,86 @@ final class CompilerTest extends TestCase
         );
     }
 
+    public function testLoopVariablesMayNotTakeAReservedName(): void
+    {
+        // The artefact is PHP: "$this" and "$GLOBALS" cannot be re-assigned, so a
+        // page that compiled cleanly used to be a fatal error the moment it ran,
+        // and a superglobal name would shadow the real one for the rest of the
+        // render instead of holding the iteration's value.
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'users', 'as' => 'this', 'body' => []]]],
+            'each as must not be "this": the artefact cannot re-assign it'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'users', 'as' => 'u', 'index' => 'GLOBALS', 'body' => []]]],
+            'each index must not be "GLOBALS": the artefact cannot re-assign it'
+        );
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => 'users', 'as' => '_GET', 'body' => []]]],
+            'each as must not be "_GET": a superglobal would be shadowed for the rest of the render'
+        );
+        $this->expectError(
+            ['body' => [
+                ['type' => 'table', 'items' => 'u', 'as' => '_SERVER', 'columns' => [['label' => 'A', 'pop' => '{{ row.a }}']]],
+            ]],
+            'table as must not be "_SERVER": a superglobal would be shadowed for the rest of the render'
+        );
+    }
+
+    public function testLoopVariableNamesThatOnlyLookReservedStillCompile(): void
+    {
+        // PHP's special variables are case-sensitive, so these are ordinary names:
+        // refusing them would break pages that work today.
+        $this->assertStringContainsString(
+            'as $globals',
+            $this->compile(['body' => [['type' => 'each', 'items' => 'u', 'as' => 'globals', 'body' => []]]])
+        );
+        $this->assertStringContainsString(
+            'as $THIS',
+            $this->compile(['body' => [['type' => 'each', 'items' => 'u', 'as' => 'THIS', 'body' => []]]])
+        );
+    }
+
+    public function testCompiledPageWithEveryNodeTypeIsParseablePhp(): void
+    {
+        // spec.md promises the artefact is parseable PHP, which is the invariant the
+        // reserved-name gap broke: the compiler produced the file without a word and
+        // only running it failed. A page that exercises one of every node keeps that
+        // promise honest against future emission changes.
+        $php = $this->compile([
+            'layout' => 'layout/main',
+            'title' => 'Users',
+            'sections' => ['content' => [
+                ['type' => 'heading', 'level' => 2, 'text' => 'List'],
+                ['type' => 'text', 'text' => 'Total: {{ total }}'],
+                ['type' => 'each', 'items' => 'users', 'as' => 'u', 'index' => 'i', 'body' => [
+                    ['type' => 'link', 'href' => '/u/{{ u.id }}', 'text' => '{{ u.name }}'],
+                ]],
+                ['type' => 'if', 'when' => 'admin', 'then' => [['type' => 'text', 'text' => 'Admin']], 'else' => []],
+                ['type' => 'table', 'items' => 'users', 'as' => 'row', 'empty' => 'None', 'columns' => [
+                    ['label' => 'Name', 'pop' => '{{ row.name }}'],
+                    ['label' => 'Actions', 'content' => [['type' => 'text', 'text' => 'Edit']]],
+                ]],
+                ['type' => 'form', 'action' => '/s', 'fields' => [
+                    ['type' => 'field', 'name' => 'q', 'label' => 'Search', 'placeholder' => 'Name'],
+                    ['type' => 'field', 'name' => 'role', 'label' => 'Role', 'input' => 'select', 'options' => ['a' => 'A']],
+                    ['type' => 'field', 'name' => 'bio', 'label' => 'Bio', 'input' => 'textarea', 'rows' => 3],
+                    ['type' => 'field', 'name' => 'ok', 'label' => 'Active', 'input' => 'checkbox'],
+                ]],
+                ['type' => 'el', 'tag' => 'div', 'class' => 'wrap', 'data-x' => 'y', 'body' => [
+                    ['type' => 'component', 'name' => 'card', 'data' => ['title' => '{{ title }}']],
+                    ['type' => 'component', 'name' => 'badge'],
+                ]],
+            ]],
+        ]);
+
+        $file = self::makeTempDir() . '/page.tpl.php';
+        file_put_contents($file, $php);
+        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file) . ' 2>&1', $output, $code);
+
+        $this->assertSame(0, $code, 'the compiled page is not parseable PHP: ' . implode(' ', $output));
+    }
+
     public function testFormRejectsAFieldThatIsNotANode(): void
     {
         $this->expectError(
