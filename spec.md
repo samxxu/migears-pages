@@ -425,36 +425,36 @@ Member methods fall into three groups:
 All errors throw `CompileException` (extends `\RuntimeException`), with a node path in the message:
 
 ```
-sections.content[2].columns[2]: column specifies both pop and content
+sections.content[2].columns[2]: a column cannot specify both pop and content
 ```
 
 Error classes:
 
 | Category | Detection | Example |
 |----------|-----------|---------|
-| Root type error | root is not an array / wrong shape | page: unknown field "foo" |
-| Structural error | a top-level rule is violated | specifying both layout and body |
+| Root type error | root is not an array / wrong shape | page: unknown field "foo" (allowed: title / layout / body / sections) |
+| Structural error | a top-level rule is violated | page: layout and body cannot be set together; use sections when layout is set |
 | Unknown node | `type` not in the vocabulary | unknown node type "foo" |
-| Missing/invalid field | required missing, enum out of range, wrong type | if missing when; level is 7 |
-| Path error | interpolation/path grammar mismatch | invalid path "user name" |
-| Context error | pop/content mutually exclusive, etc. | column has both pop and content; pop does not reference the row variable |
+| Missing/invalid field | required missing, enum out of range, wrong type | missing string field "when"; heading level must be an integer from 1 to 6, got 7 |
+| Path error | interpolation/path grammar mismatch | invalid path "user name"; only a.b.c variable paths are supported |
+| Context error | pop/content mutually exclusive, etc. | a column cannot specify both pop and content; must reference the row variable "row", got "{{ user.name }}" |
 | Root field type error | `layout` / `title` not a string, `sections` not a mapping | page: layout must be a string, got array |
 | Title conflict | `title` and `sections.title` both set the page title — one section, two spellings, so keeping both would discard one in silence | page: title and a "title" section both set the page title; keep one of them |
 | Template name error | `layout` / `component.name` is not a relative name inside the view roots: an empty, "." or ".." segment, or a NUL byte | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
 | method type error | `form.method` not a string (validated before any cast, no PHP warning leaks) | method must be the string "get" or "post", got array |
-| List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), currently a keyed mapping; wrap it in [ ] |
+| List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list |
 | Field value type error | `field.required` not a boolean, `option` text not a string | required must be a boolean, got string |
 | Literal error | `{{ }}` written in a literal field | "empty" is a literal field and does not support {{ }} interpolation |
-| Template-layer marker | `##` in a literal field (`label` / `name` / `tag` / `empty` / option, etc.) — these fields are written verbatim with no place to escape | body[0].fields[0]: "label" is a literal; "##" (template-layer syntax) is not allowed |
-| Mapping shape error | `sections` / `component.data` written as a list | page: sections must be a mapping of section names to node trees, currently a list |
-| Field usage-scope error | `placeholder` / `checked` / `rows` / `value` / `required` on unsupported inputs | "placeholder" is only used for text / password / email / number fields, current input is "select" |
-| Embedded structure type error | a field/column `type` mismatches its position | type must be "field" |
-| Unknown key | neither a DSL field nor in the passthrough whitelist | unknown attribute "levl" |
-| Hyphen directive name | `x-on-*` / `x-bind-*` / `x-transition-*` | write "x-on:click" or "@click" |
-| Brace mismatch | interpolation contains `{{{` or `}}}` | interpolation cannot use three consecutive braces |
-| Attribute with no mount point | a passthrough attribute on a node that outputs no tag | node "text" emits no tag; wrap the content in type: el |
-| Attribute value type error | a passthrough value is not a scalar | the value of attribute "x" must be a scalar, got array |
-| Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined more than once |
+| Template-layer marker | `##` in a literal field (`label` / `name` / `tag` / `empty` / option, etc.) — these fields are written verbatim with no place to escape | body[0].fields[0]: "label" is a literal and may not contain "##" (template-level syntax) |
+| Mapping shape error | `sections` / `component.data` written as a list | page: sections must be a map of section name to node tree (a key-value map), but got a list |
+| Field usage-scope error | `placeholder` / `checked` / `rows` / `value` / `required` on unsupported inputs | "placeholder" is only for the text / password / email / number fields; the input here is "select" |
+| Embedded structure type error | a field/column `type` mismatches its position | type must be "field" (field is a nested structure; its position decides the type) |
+| Unknown key | neither a DSL field nor in the passthrough whitelist | unknown attribute "levl"; the passthrough accepts the '@event' shorthand, directive names with a colon (x-on:click / wire:click / :href, etc.), the x- / v- / hx- / data- prefixes and class / id / style / bind; check the spelling |
+| Hyphen directive name | `x-on-*` / `x-bind-*` / `x-transition-*` | unknown attribute "x-on-click"; Alpine event/binding directives use a colon, write "x-on:click" or "@click" |
+| Brace mismatch | interpolation contains `{{{` or `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
+| Attribute with no mount point | a passthrough attribute on a node that outputs no tag | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
+| Attribute value type error | a passthrough value is not a scalar | attribute "x" must have a scalar value, got array |
+| Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined twice |
 
 It fails fast: the first error throws, and the `CompileException` carries the path from root to node.
 
@@ -963,36 +963,36 @@ h5::FORM('/users/save')->fields([h5::INPUT('email')->label('邮箱')->type('emai
 所有错误抛 `CompileException`（继承 `\RuntimeException`），信息带节点路径，格式：
 
 ```
-sections.content[2].columns[2]: 列同时指定 pop 与 content
+sections.content[2].columns[2]: a column cannot specify both pop and content
 ```
 
 错误分类：
 
 | 类别 | 检测 | 示例 |
 |------|------|------|
-| 根类型错误 | 根不是数组/结构不符 | page: 未知字段 "foo" |
-| 结构错误 | 顶层规则违反 | 同时指定 layout 与 body |
-| 未知节点 | type 不在词表 | 未知节点类型 "foo" |
-| 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | if 缺 when；level 为 7 |
-| 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
-| 上下文错误 | pop/content 互斥等 | column 同时含 pop 与 content；pop 未引用行变量 |
-| 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout 必须是字符串，收到 array |
+| 根类型错误 | 根不是数组/结构不符 | page: unknown field "foo" (allowed: title / layout / body / sections) |
+| 结构错误 | 顶层规则违反 | page: layout and body cannot be set together; use sections when layout is set |
+| 未知节点 | type 不在词表 | unknown node type "foo" |
+| 字段缺失/非法 | 必填缺失、枚举越界、类型不符 | missing string field "when"; heading level must be an integer from 1 to 6, got 7 |
+| 路径错误 | 插值/路径文法不匹配 | invalid path "user name"; only a.b.c variable paths are supported |
+| 上下文错误 | pop/content 互斥等 | a column cannot specify both pop and content; must reference the row variable "row", got "{{ user.name }}" |
+| 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout must be a string, got array |
 | title 冲突 | `title` 与 `sections.title` 同时设置页面标题——同一个 section 两种写法，同时保留会静默丢弃一个 | page: title and a "title" section both set the page title; keep one of them |
 | 模板名错误 | `layout` / `component.name` 不是视图根内的相对名：空段、`.`、`..`，或含 NUL 字节 | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
-| method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
-| 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
-| 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required 必须是布尔值，收到 string |
-| 字面量错误 | 字面量字段写了 `{{ }}` | "empty" 是字面量字段，不支持 {{ }} 插值 |
-| 模板层标记 | 字面量字段（`label` / `name` / `tag` / `empty` / option 等）里出现 `##`——这些字段原样写入产物，没有可转义的位置 | body[0].fields[0]: "label" 是字面量，不允许出现 "##"（模板层语法） |
-| 映射形态错误 | `sections` / `component.data` 写成列表 | page: sections 必须是 section 名到节点树的映射（键值映射），当前是列表 |
-| 字段使用范围错误 | `placeholder` / `checked` / `rows` / `value` / `required` 用在不支持的 input 上 | "placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select" |
-| 内嵌结构类型错误 | field/column 的 type 与位置不符 | type 必须是 "field" |
-| 未知键 | 既非 DSL 字段，也不在透传白名单 | 未知属性 "levl" |
-| 连字符指令名 | `x-on-*` / `x-bind-*` / `x-transition-*` | 请写 "x-on:click" 或 "@click" |
-| 花括号错乱 | 插值出现 `{{{` 或 `}}}` | 插值符号不能连续三个花括号 |
-| 属性无挂载点 | 透传属性出现在不输出标签的节点上 | 节点 "text" 不输出标签，请用 type: el 包裹内容 |
-| 属性值类型错误 | 透传属性值不是标量 | 属性 "x" 的值必须是标量，收到 array |
-| 重复属性 | 同名透传属性出现两次 | 属性 "class" 重复定义 |
+| method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method must be the string "get" or "post", got array |
+| 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list |
+| 字段值类型错误 | `field.required` 不是布尔，`option` 文本不是字符串 | required must be a boolean, got string |
+| 字面量错误 | 字面量字段写了 `{{ }}` | "empty" is a literal field and does not support {{ }} interpolation |
+| 模板层标记 | 字面量字段（`label` / `name` / `tag` / `empty` / option 等）里出现 `##`——这些字段原样写入产物，没有可转义的位置 | body[0].fields[0]: "label" is a literal and may not contain "##" (template-level syntax) |
+| 映射形态错误 | `sections` / `component.data` 写成列表 | page: sections must be a map of section name to node tree (a key-value map), but got a list |
+| 字段使用范围错误 | `placeholder` / `checked` / `rows` / `value` / `required` 用在不支持的 input 上 | "placeholder" is only for the text / password / email / number fields; the input here is "select" |
+| 内嵌结构类型错误 | field/column 的 type 与位置不符 | type must be "field" (field is a nested structure; its position decides the type) |
+| 未知键 | 既非 DSL 字段，也不在透传白名单 | unknown attribute "levl"; the passthrough accepts the '@event' shorthand, directive names with a colon (x-on:click / wire:click / :href, etc.), the x- / v- / hx- / data- prefixes and class / id / style / bind; check the spelling |
+| 连字符指令名 | `x-on-*` / `x-bind-*` / `x-transition-*` | unknown attribute "x-on-click"; Alpine event/binding directives use a colon, write "x-on:click" or "@click" |
+| 花括号错乱 | 插值出现 `{{{` 或 `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
+| 属性无挂载点 | 透传属性出现在不输出标签的节点上 | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
+| 属性值类型错误 | 透传属性值不是标量 | attribute "x" must have a scalar value, got array |
+| 重复属性 | 同名透传属性出现两次 | attribute "class" defined twice |
 
 失败即中止（fail-fast）：首个错误抛出，`CompileException` 携带从根到节点的路径。
 

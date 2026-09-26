@@ -70,7 +70,7 @@ The alias is decided by the caller; `h5` is just this document's choice—after 
 
 **Everything else is a member method, named after its HTML counterpart where possible.** If it is an HTML attribute, use the attribute name (`->type()`, `->href()`, `->target()`, `->method()`, `->value()`, `->placeholder()`, `->checked()`, `->rows()`, `->required()`, `->class()`, `->id()`, `->style()`); if it is an HTML element, use the element name; if there is no corresponding tag, use a name that fits the component's semantics (`->label()`, `->options()`, `->BODY()`, `->AS()`, `->INDEX()`, `->columns()`, `->empty()`, `->pop()`, `->bind()`, `->popAndBind()`, `->content()`, `->data()`). Only `->THEN()`, `->ELSE()` are named after statements rather than attributes.
 
-**Attribute-style methods grow only on nodes that emit a tag.** `HEADING`, `LINK`, `FORM`, `TABLE`, `EL` have `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`; `TEXT`, `IF`, `EACH`, `COMPONENT` have none of these—they are PHP-level `undefined method` errors, not something discovered only at compile time. If a hand-written array hangs attributes on these nodes, the compiler still reports `node "text" emits no tag; wrap the content with type: el`.
+**Attribute-style methods grow only on nodes that emit a tag.** `HEADING`, `LINK`, `FORM`, `TABLE`, `EL` have `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`; `TEXT`, `IF`, `EACH`, `COMPONENT` have none of these—they are PHP-level `undefined method` errors, not something discovered only at compile time. If a hand-written array hangs attributes on these nodes, the compiler still reports `node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el`.
 
 | Factory | Constructor | Member methods |
 |------|----------|----------|
@@ -114,7 +114,7 @@ h5::HEADING(2)->text('User list')->id('usersTitle')->class('page-title')
 ['type' => 'heading', 'level' => 2, 'text' => 'User list', 'id' => 'usersTitle', 'class' => 'page-title']
 ```
 
-`level` takes values 1–6; out of range is a compile error. `->text()` is required—forgetting it reports `heading: missing string field "text"` at compile time. Chained writing never silently turns a required field into an optional one.
+`level` takes values 1–6; out of range is a compile error. `->text()` is required—forgetting it reports `body[0]: missing string field "text"` at compile time. Chained writing never silently turns a required field into an optional one.
 
 ### 4.3 link
 
@@ -175,7 +175,7 @@ The loop header can also be written as `->AS()` / `->INDEX()`, equivalent to the
 h5::EACH('users')->AS('user')->INDEX('i')->BODY([...])
 ```
 
-Omitted header arguments are not written into the node, so the two forms are interchangeable; writing both sites for the same field throws `LogicException: field set twice: as` under the "never silently overwrite" stance. Named arguments must carry a colon and may only appear after positional arguments: `h5::EACH('users', index: 'i')` is valid (`as` uses its default), while `h5::EACH('users', index: 'i', 'user')` is a syntax error.
+Omitted header arguments are not written into the node, so the two forms are interchangeable; writing both sites for the same field throws `LogicException: field already set: as` under the "never silently overwrite" stance. Named arguments must carry a colon and may only appear after positional arguments: `h5::EACH('users', index: 'i')` is valid (`as` uses its default), while `h5::EACH('users', index: 'i', 'user')` is a syntax error.
 
 `EACH` is an iteration node whose constructor signature takes two extra optional parameters—see the exception note in §3.
 
@@ -201,7 +201,7 @@ h5::TEXTAREA('bio')->label('About')                 // ['type' => 'field', 'inpu
 h5::SELECT('role')->label('Role')                  // ['type' => 'field', 'input' => 'select', ...]
 ```
 
-The control is set once, by the factory, and there is no second path that changes it: `textarea` and `select` have no `->type()` (PHP-level `call to undefined method`), and `h5::INPUT('x')->type('email')->type('text')` throws `LogicException: control set twice: already email, cannot be set to text`.
+The control is set once, by the factory, and there is no second path that changes it: `textarea` and `select` have no `->type()` (PHP-level `call to undefined method`), and `h5::INPUT('x')->type('email')->type('text')` throws `LogicException: control already set: email`.
 
 `->required()` with no argument is `true`, matching HTML's boolean-attribute spelling; just don't write it when it isn't needed. `->checked()` and `->value()` take paths (`'user.active'`, `'user.name'`), not literal values.
 
@@ -310,10 +310,10 @@ Page data is expected to be array-shaped (`$user['name']`); objects are normaliz
 All errors are `CompileException`s with the node path, and the first error is thrown:
 
 ```
-sections.content[2].columns[2]: column specifies both pop and content
-body[0].fields[0]: bind value must be a JS variable name or path (e.g. user.email), got "{{ user.email }}"
-body[0].fields[0]: "placeholder" only applies to text / password / email / number fields; current input is "select"
-body[1].then: must be a node-tree array (list); got a key-value mapping; wrap it in [ ] as a list
+sections.content[2].columns[2]: a column cannot specify both pop and content
+body[0].fields[0]: bind is a browser-side variable name and does not support {{ }} interpolation; use value / pop for server-side rendering
+body[0].fields[0]: "placeholder" is only for the text / password / email / number fields; the input here is "select"
+body[1].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list
 ```
 
 No PHP warnings leak, and no raw `TypeError` is thrown for type mismatches.
@@ -476,7 +476,7 @@ h5::EACH('users')->BODY([
 
 **其余一切都是成员方法，方法名尽量与 HTML 同名。** 是 HTML 属性的就用属性名（`->type()`、`->href()`、`->target()`、`->method()`、`->value()`、`->placeholder()`、`->checked()`、`->rows()`、`->required()`、`->class()`、`->id()`、`->style()`），是 HTML 元素的就用元素名，没有对应标签的用一个贴合组件语义的名字（`->label()`、`->options()`、`->BODY()`、`->AS()`、`->INDEX()`、`->columns()`、`->empty()`、`->pop()`、`->bind()`、`->popAndBind()`、`->content()`、`->data()`）；只有 `->THEN()`、`->ELSE()` 按语句而不是属性命名。
 
-**属性类方法只长在输出标签的节点上。** `HEADING`、`LINK`、`FORM`、`TABLE`、`EL` 有 `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`；`TEXT`、`IF`、`EACH`、`COMPONENT` 没有这些方法——它们是 PHP 层的 `undefined method`，而不是等到编译期才被发现。手写数组若给这些节点挂属性，仍由编译器报「节点 "text" 不输出标签，请用 type: el 包裹内容」。
+**属性类方法只长在输出标签的节点上。** `HEADING`、`LINK`、`FORM`、`TABLE`、`EL` 有 `->class()` / `->id()` / `->style()` / `->attr()` / `->on()` / `->bind()`；`TEXT`、`IF`、`EACH`、`COMPONENT` 没有这些方法——它们是 PHP 层的 `undefined method`，而不是等到编译期才被发现。手写数组若给这些节点挂属性，仍由编译器报「node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el」。
 
 | 工厂 | 构造函数 | 成员方法 |
 |------|----------|----------|
@@ -520,7 +520,7 @@ h5::HEADING(2)->text('用户列表')->id('usersTitle')->class('page-title')
 ['type' => 'heading', 'level' => 2, 'text' => '用户列表', 'id' => 'usersTitle', 'class' => 'page-title']
 ```
 
-`level` 取值 1–6，越界即编译错误。`->text()` 是必填的，忘了会在编译期报 `heading: 缺少 string 字段 "text"`——链式写法不会让必填项悄悄变成可选。
+`level` 取值 1–6，越界即编译错误。`->text()` 是必填的，忘了会在编译期报 `body[0]: missing string field "text"`——链式写法不会让必填项悄悄变成可选。
 
 ### 4.3 link
 
@@ -581,7 +581,7 @@ h5::EACH('users', as: 'user')->BODY([
 h5::EACH('users')->AS('user')->INDEX('i')->BODY([...])
 ```
 
-省略的头参数不会被写进节点，所以两种写法可以互换；同一个字段两处都写会按「不静默覆盖」抛 `LogicException: 字段重复设置: as`。命名参数必须带冒号，且只能写在位置参数之后：`h5::EACH('users', index: 'i')` 合法（`as` 用默认值），`h5::EACH('users', index: 'i', 'user')` 是语法错误。
+省略的头参数不会被写进节点，所以两种写法可以互换；同一个字段两处都写会按「不静默覆盖」抛 `LogicException: field already set: as`。命名参数必须带冒号，且只能写在位置参数之后：`h5::EACH('users', index: 'i')` 合法（`as` 用默认值），`h5::EACH('users', index: 'i', 'user')` 是语法错误。
 
 `EACH` 是迭代节点，它的构造函数签名多两个可选参数，这一点见第三节的例外说明。
 
@@ -607,7 +607,7 @@ h5::TEXTAREA('bio')->label('简介')                 // ['type' => 'field', 'inp
 h5::SELECT('role')->label('角色')                  // ['type' => 'field', 'input' => 'select', ...]
 ```
 
-控件由工厂一次定下，之后没有第二条路径改它：`textarea` 与 `select` 上没有 `->type()`（PHP 层 `call to undefined method`），而 `h5::INPUT('x')->type('email')->type('text')` 抛 `LogicException: 控件重复设置: 已经是 email，不能再设为 text`。
+控件由工厂一次定下，之后没有第二条路径改它：`textarea` 与 `select` 上没有 `->type()`（PHP 层 `call to undefined method`），而 `h5::INPUT('x')->type('email')->type('text')` 抛 `LogicException: control already set: email`。
 
 `->required()` 不带参数即为 true，对应 HTML 里布尔属性的写法；不需要时直接不写。`->checked()` 与 `->value()` 收的是路径（`'user.active'`、`'user.name'`），不是字面值。
 
@@ -716,10 +716,10 @@ h5::EL('button')->on('click', 'open = !open')->BODY([h5::TEXT('切换')])
 错误全部是带节点路径的 `CompileException`，首个错误即抛出：
 
 ```
-sections.content[2].columns[2]: 列同时指定 pop 与 content
-body[0].fields[0]: bind 的值必须是 JS 变量名或路径（如 user.email），收到 "{{ user.email }}"
-body[0].fields[0]: "placeholder" 仅用于 text / password / email / number 字段，当前 input 是 "select"
-body[1].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表
+sections.content[2].columns[2]: a column cannot specify both pop and content
+body[0].fields[0]: bind is a browser-side variable name and does not support {{ }} interpolation; use value / pop for server-side rendering
+body[0].fields[0]: "placeholder" is only for the text / password / email / number fields; the input here is "select"
+body[1].then: must be a node tree array (a list), but got a key-value map; wrap it in [ ] to make a list
 ```
 
 不会出现 PHP 警告泄漏，也不会因为类型不符抛出原始 `TypeError`。

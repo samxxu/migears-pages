@@ -242,7 +242,7 @@ Two limits worth designing around:
 Compile errors throw `MiGears\Pages\Exception\CompileException` with a node path, e.g.:
 
 ```
-sections.content[2].columns[2]: 列同时指定 pop 与 content
+sections.content[2].columns[2]: a column cannot specify both pop and content
 ```
 
 A frontend overrides `newException()` so its own failures still arrive as its own exception class, and one `catch` keeps working for everything it throws.
@@ -507,7 +507,7 @@ echo $renderer->render([
 编译错误抛出 `MiGears\Pages\Exception\CompileException`，信息带节点路径，例如：
 
 ```
-sections.content[2].columns[2]: 列同时指定 pop 与 content
+sections.content[2].columns[2]: a column cannot specify both pop and content
 ```
 
 前端包可覆写 `newException()`，使共享层产生的失败仍以其自身的异常类抛出，一个 `catch` 覆盖全部错误。
