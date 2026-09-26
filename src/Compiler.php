@@ -268,6 +268,7 @@ class Compiler
      * field is a candidate. A frontend whose parser stores attributes apart
      * from the fields (XML) overrides this.
      *
+     * @param array<string, mixed> $n the node being inspected
      * @param list<string> $dslFields field names this node type consumes itself
      * @return list<array{name: string, value: mixed, explicit: bool}>
      *         explicit marks an attribute attached outside the whitelist, which
@@ -340,6 +341,7 @@ class Compiler
      * to drop it: forwarding it blindly would hide the mistake, while dropping
      * it silently yields a page that compiles and quietly lost a directive.
      *
+     * @param array<string, mixed> $n the node whose attributes are rendered
      * @param list<string> $dslFields field names this node type consumes itself
      */
     private function forwardedAttrs(array $n, array $dslFields, string $path, bool $emitsTag): string
@@ -442,6 +444,7 @@ class Compiler
      * Compilation: array node model -> .tpl.php
      * ---------------------------------------------------------------- */
 
+    /** @param array<string, mixed> $page page declaration (title / layout / body / sections) */
     private function compilePage(array $page): string
     {
         $hasLayout = array_key_exists('layout', $page);
@@ -480,6 +483,7 @@ class Compiler
         return $this->compileNodes($body, 'body');
     }
 
+    /** @param array<string, mixed> $page page declaration carrying layout and sections */
     private function compileLayout(array $page): string
     {
         $layout = $page['layout'];
@@ -539,6 +543,7 @@ class Compiler
         return $out . "\n";
     }
 
+    /** @param list<mixed> $nodes node tree whose entries are compiled in order */
     private function compileNodes(array $nodes, string $path): string
     {
         $parts = [];
@@ -572,6 +577,7 @@ class Compiler
         };
     }
 
+    /** @param array<string, mixed> $n text node */
     private function compileText(array $n, string $path): string
     {
         $text = $this->requireString($n, 'text', $path);
@@ -580,6 +586,7 @@ class Compiler
         return $this->interpolate($text, $path);
     }
 
+    /** @param array<string, mixed> $n heading node */
     private function compileHeading(array $n, string $path): string
     {
         $level = $this->optional($n, 'level', 1);
@@ -632,6 +639,7 @@ class Compiler
         return $out . "\n<?php endif ?>";
     }
 
+    /** @param array<string, mixed> $n each node */
     private function compileEach(array $n, string $path): string
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
@@ -831,6 +839,7 @@ class Compiler
         return $out . $extra . '>';
     }
 
+    /** @param array<string, mixed> $n table node */
     private function compileTable(array $n, string $path): string
     {
         $items = $this->compilePath($this->requireString($n, 'items', $path), $path);
@@ -922,6 +931,7 @@ class Compiler
             : "<{$tag}{$attrs}>\n{$inner}\n</{$tag}>";
     }
 
+    /** @param array<string, mixed> $n component node */
     private function compileComponent(array $n, string $path): string
     {
         $name = $this->literal($this->requireString($n, 'name', $path), $path, 'name');

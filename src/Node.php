@@ -88,19 +88,31 @@ abstract class Node
         return $this->fill('target', $target);
     }
 
-    /** Uppercase because it names the statement, not an attribute. */
+    /**
+     * Uppercase because it names the statement, not an attribute.
+     *
+     * @param list<mixed> $nodes node tree for the then branch
+     */
     final public function THEN(array $nodes): static
     {
         return $this->fill('then', $nodes);
     }
 
-    /** Uppercase because it names the statement, not an attribute. */
+    /**
+     * Uppercase because it names the statement, not an attribute.
+     *
+     * @param list<mixed> $nodes node tree for the else branch
+     */
     final public function ELSE(array $nodes): static
     {
         return $this->fill('else', $nodes);
     }
 
-    /** Uppercase because it names a node block, not an attribute. */
+    /**
+     * Uppercase because it names a node block, not an attribute.
+     *
+     * @param list<mixed> $nodes node tree body
+     */
     final public function BODY(array $nodes): static
     {
         return $this->fill('body', $nodes);
@@ -118,6 +130,7 @@ abstract class Node
         return $this->fill('index', $variable);
     }
 
+    /** @param list<mixed> $fields field nodes */
     final public function fields(array $fields): static
     {
         return $this->fill('fields', $fields);
@@ -128,6 +141,7 @@ abstract class Node
         return $this->fill('method', $method);
     }
 
+    /** @param list<mixed> $columns column nodes */
     final public function columns(array $columns): static
     {
         return $this->fill('columns', $columns);
@@ -138,6 +152,7 @@ abstract class Node
         return $this->fill('empty', $text);
     }
 
+    /** @param array<string, string> $data component data, key => value with {{ }} interpolation */
     final public function data(array $data): static
     {
         return $this->fill('data', $data);
@@ -163,6 +178,7 @@ abstract class Node
         return $this->fill('placeholder', $placeholder);
     }
 
+    /** @param array<string, string> $options option value => label */
     final public function options(array $options): static
     {
         return $this->fill('options', $options);
@@ -189,6 +205,7 @@ abstract class Node
         return $this->fill('pop', $reference);
     }
 
+    /** @param list<mixed> $nodes cell content node tree */
     final public function content(array $nodes): static
     {
         return $this->fill('content', $nodes);
