@@ -668,6 +668,30 @@ final class CompilerTest extends TestCase
         $this->assertStringContainsString('title', $warnings[0]);
     }
 
+    public function testStandalonePageDropsTitleWhenThereIsNoCallbackToReportTo(): void
+    {
+        // The notice only travels to the callback the constructor was given, and
+        // the default compiler is given none. So "ignored with a warning" is exact
+        // only when a callback was injected; with none, the title is dropped and
+        // nothing at all is reported — but nothing is leaked to PHP either, which
+        // is the half worth pinning.
+        $warnings = [];
+        set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        });
+
+        try {
+            $out = (new Compiler())->compile(['title' => 'Ignored', 'body' => [['type' => 'text', 'text' => 'Content']]]);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame('Content', $out);
+        $this->assertSame([], $warnings, 'a missing warn callback must not turn into a PHP warning');
+    }
+
     public function testLayoutAndBodyAreMutuallyExclusive(): void
     {
         $this->expectError(
@@ -1047,6 +1071,28 @@ final class CompilerTest extends TestCase
 
             $target = $frontend->compileToFile($source);
             self::assertSame($dir . '/users.tpl.php', $target);
+            self::assertSame('Hello', file_get_contents($target));
+        } finally {
+            self::removeDir($dir);
+        }
+    }
+
+    public function testCompileToFileOnlyShortensTheConventionItRecognises(): void
+    {
+        // The target name comes from the source basename, and the only shortening
+        // is the ".page.<ext>" convention both front ends use. A file named any
+        // other way keeps its whole basename: trimming whatever looks like an
+        // extension would rename files their author named deliberately, and the
+        // CLI accepts a file of any name.
+        $dir = self::makeTempDir();
+
+        try {
+            $source = $dir . '/users.stub';
+            file_put_contents($source, 'Hello');
+
+            $target = (new StubFrontend())->compileToFile($source);
+
+            self::assertSame($dir . '/users.stub.tpl.php', $target);
             self::assertSame('Hello', file_get_contents($target));
         } finally {
             self::removeDir($dir);

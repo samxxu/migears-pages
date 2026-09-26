@@ -70,7 +70,7 @@ A page declaration is a PHP array (`array<string, mixed>`). The root mapping is 
 
 Rule: when `layout` is present, `sections` is required and `body` is forbidden; when `layout` is absent, `body` is required and `sections` is forbidden. Violating this is a compile error. Any key on the root other than `title` / `layout` / `body` / `sections` is a compile error.
 
-When `title` is present, a `title` section is generated automatically (only effective with a `layout`; without one it is ignored with a warning). Both spellings fill that one section, so a `title` and a `sections.title` together are a compile error rather than a silent win for one of them.
+When `title` is present, a `title` section is generated automatically, and that is only effective with a `layout`. Without one the title has nowhere to go, so it is dropped and a notice is handed to the callback given to the compiler's constructor — `new Compiler($warn)`. The default `new Compiler()` takes no callback, so nothing is reported; the title is not kept either way. Both spellings fill that one section, so a `title` and a `sections.title` together are a compile error rather than a silent win for one of them.
 
 ### 4.2 Nodes
 
@@ -367,7 +367,7 @@ Frontend packages extend `MiGears\Pages\Compiler` and only implement parsing and
 | `nodeRef` / `containerRef` / `explicitAttrRef` | `(string): string` | the wording for node/container/explicit-attribute in error messages |
 | `COLON_ONLY_DIRECTIVES` | `array<string, list<string>>` | the hyphen-form interception table (defaults to Alpine's three directives) |
 
-The base class also provides the public entry points: `compile(array $page)`, `compileSource(string $source)` (goes through `parse()`), `compileFile(string $path)`, `compileToFile(string $sourcePath, ?string $outputDir)` (`xxx.page.*` → `xxx.tpl.php`). The file helpers name their own failures — a missing or unreadable source, an output directory that cannot be created, a target that cannot be written — instead of letting a PHP warning through and then reporting a file that was never written.
+The base class also provides the public entry points: `compile(array $page)`, `compileSource(string $source)` (goes through `parse()`), `compileFile(string $path)`, `compileToFile(string $sourcePath, ?string $outputDir)` — compile and write in one step, returning the target path. `$outputDir` defaults to the source's own directory, and the target name is the source basename with a trailing `.page.<alnum>` removed and `.tpl.php` appended: `users.page.xml` → `users.tpl.php`. Only that spelling is shortened; every other basename is kept whole and the suffix added, so `users.xml` → `users.xml.tpl.php`. The CLI accepts a file of any name, and one the convention does not recognise is not renamed behind its author's back. The file helpers name their own failures — a missing or unreadable source, an output directory that cannot be created, a target that cannot be written — instead of letting a PHP warning through and then reporting a file that was never written.
 
 ## 9. Renderer facade
 
@@ -630,7 +630,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 规则：`layout` 存在时 `sections` 必填、`body` 禁用；`layout` 不存在时 `body` 必填、`sections` 禁用。违反即编译错误。根上出现 `title` / `layout` / `body` / `sections` 以外的键即编译错误。
 
-`title` 存在时自动生成一个 `title` section（仅在有 `layout` 时生效；无 layout 时忽略并告警）。两种写法填的是同一个 section，因此 `title` 与 `sections.title` 同时存在属编译错误，而不是静默让其中一方胜出。
+`title` 存在时自动生成一个 `title` section，且仅在有 `layout` 时生效。无 layout 时这个 title 无处可去：会被丢弃，并把一条提示交给编译器构造函数拿到的回调——`new Compiler($warn)`。默认的 `new Compiler()` 不接收回调，因此什么都不报；两种情况下 title 都不会被保留。两种写法填的是同一个 section，因此 `title` 与 `sections.title` 同时存在属编译错误，而不是静默让其中一方胜出。
 
 ### 4.2 节点
 
@@ -927,7 +927,7 @@ PHP 上下文绝不能输出 `## ##` 糖——它会被 TemplateCompiler 二次�
 | `nodeRef` / `containerRef` / `explicitAttrRef` | `(string): string` | 错误信息中节点/容器/显式属性的措辞 |
 | `COLON_ONLY_DIRECTIVES` | `array<string, list<string>>` | 连字符定向拦截表（默认 Alpine 三个指令） |
 
-基类还提供公共入口：`compile(array $page)`、`compileSource(string $source)`（走 `parse()`）、`compileFile(string $path)`、`compileToFile(string $sourcePath, ?string $outputDir)`（`xxx.page.*` → `xxx.tpl.php`）。文件相关入口自行命名失败原因——源文件不存在或不可读、输出目录无法创建、目标文件无法写入——而不是放行 PHP 原生警告、再报告一个根本没写出来的文件。
+基类还提供公共入口：`compile(array $page)`、`compileSource(string $source)`（走 `parse()`）、`compileFile(string $path)`、`compileToFile(string $sourcePath, ?string $outputDir)`——一步完成编译与写盘，返回目标路径。`$outputDir` 默认取源文件所在目录；目标名是源文件 basename 去掉结尾的 `.page.<字母数字>`、再补 `.tpl.php`：`users.page.xml` → `users.tpl.php`。只有这一种拼写会被缩短，其他 basename 一律原样保留再加后缀，因此 `users.xml` → `users.xml.tpl.php`。CLI 接受任意命名的文件，不符合该约定的名字不会被背着作者改名。文件相关入口自行命名失败原因——源文件不存在或不可读、输出目录无法创建、目标文件无法写入——而不是放行 PHP 原生警告、再报告一个根本没写出来的文件。
 
 ## 9. Renderer 门面
 
