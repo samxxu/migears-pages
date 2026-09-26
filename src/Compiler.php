@@ -454,8 +454,15 @@ class Compiler
             'sections must be a map of section name to node tree'
         );
 
+        // Both spellings fill the same section, so keeping one means discarding
+        // the other. The page-level title used to lose, and when the two texts
+        // were equal the loss left no trace at all — which the fixtures did.
+        if (array_key_exists('title', $page) && array_key_exists('title', $sections)) {
+            $this->error('page: title and a "title" section both set the page title; keep one of them');
+        }
+
         $ordered = [];
-        if (array_key_exists('title', $page) && ! array_key_exists('title', $sections)) {
+        if (array_key_exists('title', $page)) {
             $title = $page['title'];
             if (! is_string($title)) {
                 $this->error('page: title must be a string, got ' . gettype($title));

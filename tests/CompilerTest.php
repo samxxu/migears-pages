@@ -446,6 +446,22 @@ final class CompilerTest extends TestCase
         $this->assertStringContainsString('Body', $out);
     }
 
+    public function testTitleAndTitleSectionConflictRejected(): void
+    {
+        // Both spellings fill the same section, so one used to win in silence.
+        // Keeping the pair legal meant the page-level title vanished without a
+        // word whenever the two texts matched — which is exactly what the
+        // fixtures did.
+        $this->expectError(
+            [
+                'title' => 'T',
+                'layout' => 'layout/main',
+                'sections' => ['title' => [['type' => 'text', 'text' => 'T']]],
+            ],
+            'title and a "title" section both set the page title'
+        );
+    }
+
     public function testStandalonePageIgnoresTitleAndWarns(): void
     {
         $warnings = [];

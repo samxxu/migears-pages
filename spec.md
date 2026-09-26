@@ -70,7 +70,7 @@ A page declaration is a PHP array (`array<string, mixed>`). The root mapping is 
 
 Rule: when `layout` is present, `sections` is required and `body` is forbidden; when `layout` is absent, `body` is required and `sections` is forbidden. Violating this is a compile error. Any key on the root other than `title` / `layout` / `body` / `sections` is a compile error.
 
-When `title` is present, a `title` section is generated automatically (only effective with a `layout`; without one it is ignored with a warning).
+When `title` is present, a `title` section is generated automatically (only effective with a `layout`; without one it is ignored with a warning). Both spellings fill that one section, so a `title` and a `sections.title` together are a compile error rather than a silent win for one of them.
 
 ### 4.2 Nodes
 
@@ -439,6 +439,7 @@ Error classes:
 | Path error | interpolation/path grammar mismatch | invalid path "user name" |
 | Context error | pop/content mutually exclusive, etc. | column has both pop and content; pop does not reference the row variable |
 | Root field type error | `layout` / `title` not a string, `sections` not a mapping | page: layout must be a string, got array |
+| Title conflict | `title` and `sections.title` both set the page title — one section, two spellings, so keeping both would discard one in silence | page: title and a "title" section both set the page title; keep one of them |
 | Template name error | `layout` / `component.name` is not a relative name inside the view roots: an empty, "." or ".." segment, or a NUL byte | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
 | method type error | `form.method` not a string (validated before any cast, no PHP warning leaks) | method must be the string "get" or "post", got array |
 | List shape error | node tree / `fields` / `columns` written as a keyed mapping | body[0].then: must be a node tree array (a list), currently a keyed mapping; wrap it in [ ] |
@@ -506,7 +507,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Page root | body not an array or written as a single node mapping, layout / title not a string, sections not a mapping, sections value not a list (including null) |
 | Collection shape | then / else / body / content / sections values / fields / columns written as a keyed mapping give a readable error, not falling through to `content[type]: node must be an object`; `sections`, `component.data` written as a list give a readable error |
 | Warning leakage | data-driven assertions over all malformed inputs: only a `CompileException` (no `TypeError`) and zero PHP warnings |
-| Layout | layout+sections / standalone body / both together error / both missing error / title section |
+| Layout | layout+sections / standalone body / both together error / both missing error / title section / title and sections.title together error |
 | Component | no data / data interpolation (PHP-context concatenation) / data literal / non-string data value error / `{{ }}` in a data key error / data written as a list error |
 | Binding | path-grammar boundaries (invalid characters, empty segment, `!` only in when) |
 | Embedded structure | `type: field` / `type: column` correct ones pass, writing the other one errors |
@@ -607,7 +608,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 规则：`layout` 存在时 `sections` 必填、`body` 禁用；`layout` 不存在时 `body` 必填、`sections` 禁用。违反即编译错误。根上出现 `title` / `layout` / `body` / `sections` 以外的键即编译错误。
 
-`title` 存在时自动生成一个 `title` section（仅在有 `layout` 时生效；无 layout 时忽略并告警）。
+`title` 存在时自动生成一个 `title` section（仅在有 `layout` 时生效；无 layout 时忽略并告警）。两种写法填的是同一个 section，因此 `title` 与 `sections.title` 同时存在属编译错误，而不是静默让其中一方胜出。
 
 ### 4.2 节点
 
@@ -976,6 +977,7 @@ sections.content[2].columns[2]: 列同时指定 pop 与 content
 | 路径错误 | 插值/路径文法不匹配 | 非法路径 "user name" |
 | 上下文错误 | pop/content 互斥等 | column 同时含 pop 与 content；pop 未引用行变量 |
 | 根字段类型错误 | `layout` / `title` 不是字符串，`sections` 不是映射 | page: layout 必须是字符串，收到 array |
+| title 冲突 | `title` 与 `sections.title` 同时设置页面标题——同一个 section 两种写法，同时保留会静默丢弃一个 | page: title and a "title" section both set the page title; keep one of them |
 | 模板名错误 | `layout` / `component.name` 不是视图根内的相对名：空段、`.`、`..`，或含 NUL 字节 | page: layout "../outside" must be a template name relative to the views root; empty, "." and ".." segments are not allowed |
 | method 类型错误 | `form.method` 不是字符串（校验先于任何强转，不泄漏 PHP 警告） | method 必须是字符串 "get" 或 "post"，收到 array |
 | 列表形态错误 | 节点树 / `fields` / `columns` 写成键值映射 | body[0].then: 必须是节点树数组（列表），当前是键值映射；请用 [ ] 包成列表 |
@@ -1043,7 +1045,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
 | 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
-| 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section |
+| 布局 | layout+sections / body 独立 / 两者同存报错 / 双缺失报错 / title section / title 与 sections.title 同存报错 |
 | 组件 | 无 data / data 插值（PHP 上下文拼接）/ data 字面量 / data 值非字符串报错 / data 键写 `{{ }}` 报错 / data 写成列表报错 |
 | 绑定 | 路径文法边界（非法字符、空段、`!` 只允许 when） |
 | 内嵌结构 | `type: field` / `type: column` 写对可通过，写成另一种即报错 |

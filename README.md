@@ -138,7 +138,7 @@ One marker per layer: pages interpolate with `{{ path }}`, while component templ
 
 This is the model the factories above normalize to, and what `migears/xml-pages` and `migears/yaml-pages` parse into.
 
-The page is a PHP array. The root has the fields `title` / `layout` / `body` / `sections`; `layout` + `sections` and `body` are mutually exclusive. Every node in `body` / `sections` is an array with a `type` key. Nested structures (`field`, `column`) are typed by their position — they need no `type`, and a written one must match.
+The page is a PHP array. The root has the fields `title` / `layout` / `body` / `sections`; `layout` + `sections` and `body` are mutually exclusive, and so are `title` and a `title` section — both spellings fill that one section. Every node in `body` / `sections` is an array with a `type` key. Nested structures (`field`, `column`) are typed by their position — they need no `type`, and a written one must match.
 
 | Node | Fields |
 |------|--------|
@@ -403,7 +403,7 @@ $page = [
 
 下面就是工厂归一后的模型，也是 `migears/xml-pages` 与 `migears/yaml-pages` 解析出的模型。
 
-页面是一个 PHP 数组。根字段为 `title` / `layout` / `body` / `sections`；`layout` + `sections` 与 `body` 互斥。`body` / `sections` 中的每个节点都是带 `type` 键的数组。内嵌结构（`field`、`column`）的类型由位置决定——不必写 `type`；若写出，值必须匹配。
+页面是一个 PHP 数组。根字段为 `title` / `layout` / `body` / `sections`；`layout` + `sections` 与 `body` 互斥，`title` 与 `title` section 也互斥——两种写法填的是同一个 section。`body` / `sections` 中的每个节点都是带 `type` 键的数组。内嵌结构（`field`、`column`）的类型由位置决定——不必写 `type`；若写出，值必须匹配。
 
 | 节点 | 字段 |
 |------|------|
