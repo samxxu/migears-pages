@@ -506,7 +506,7 @@ Composer dependency note: what runs at runtime is the generated template, which 
 
 ## 13. Test plan (TDD)
 
-Unit tests are driven by array page definitions and assert that the compiled output is byte-identical to (or contains) the expected `.tpl.php`.
+Unit tests are driven by array page definitions and assert that the compiled output is byte-identical to (or contains) the expected `.tpl.php`. The suite sets `failOnWarning`, `failOnNotice`, `failOnDeprecation`, `failOnRisky` and `beStrictAboutOutputDuringTests`, so a leaked PHP warning, notice or deprecation fails the run and so does a test that prints; `failOnSkipped` is deliberately left off, because two tests skip when the suite runs as root.
 
 | Group | Cases |
 |-------|-------|
@@ -1066,7 +1066,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 
 ## 13. 测试计划（TDD）
 
-单元测试以数组页面定义驱动，断言编译产物与期望 `.tpl.php` 完全一致（或含指定片段）。
+单元测试以数组页面定义驱动，断言编译产物与期望 `.tpl.php` 完全一致（或含指定片段）。测试套件设置 `failOnWarning`、`failOnNotice`、`failOnDeprecation`、`failOnRisky` 与 `beStrictAboutOutputDuringTests`：泄漏的 PHP 警告、通知、弃用都会让本轮失败，测试里打印输出同样失败；`failOnSkipped` 刻意不开——以 root 运行时有两个用例会跳过。
 
 | 分组 | 用例 |
 |------|------|
