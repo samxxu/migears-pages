@@ -27,13 +27,13 @@ jobs:
 
     steps:
       - name: Check out this package
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: migears-pages
 
       # Its default branch, so the pair moves together.
       - name: Check out migears-template
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/migears-template
           path: migears-template
