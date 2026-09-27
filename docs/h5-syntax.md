@@ -188,7 +188,7 @@ h5::FORM('/users/save')->fields([
     h5::SELECT('role')->label('Role')->options(['admin' => 'Admin', 'editor' => 'Edit']),
     h5::TEXTAREA('bio')->label('About')->rows(5),
     h5::INPUT('active')->label('Enabled')->type('checkbox')->checked('user.active'),
-    h5::INPUT('id')->label('')->type('hidden')->value('user.id'),
+    h5::INPUT('id')->type('hidden')->value('user.id'),
     h5::INPUT('save')->label('Save')->type('submit'),
 ])->method('post')
 ```
@@ -224,7 +224,7 @@ Control and field applicability is a hard constraint—crossing it is a compile 
 | `h5::TEXTAREA('bio')` | `->value()`, `->required()`, `->rows()` |
 | `h5::SELECT('role')` | `->options()` required (compile error if missing); `->required()` optional; writing `->value()` is a compile error |
 | `h5::INPUT('active')->type('checkbox')` | `->required()`, `->checked()` |
-| `h5::INPUT('id')->type('hidden')` | `->value()`; writing `->required()` is a compile error |
+| `h5::INPUT('id')->type('hidden')` | `->value()`; writing `->required()` is a compile error; `->label()` is optional — a hidden control renders no label element, so an omitted label compiles and one that is supplied is reported through the compiler's warn callback |
 | `h5::INPUT('save')->type('submit')` | `->label()` is the button text; writing `->value()`, `->required()` is a compile error |
 
 `name`, the `label`/`options` key values, `column.label`, and `table.empty` are all literal fields; writing `{{ }}` in them is a compile error.
@@ -594,7 +594,7 @@ h5::FORM('/users/save')->fields([
     h5::SELECT('role')->label('角色')->options(['admin' => '管理员', 'editor' => '编辑']),
     h5::TEXTAREA('bio')->label('简介')->rows(5),
     h5::INPUT('active')->label('启用')->type('checkbox')->checked('user.active'),
-    h5::INPUT('id')->label('')->type('hidden')->value('user.id'),
+    h5::INPUT('id')->type('hidden')->value('user.id'),
     h5::INPUT('save')->label('保存')->type('submit'),
 ])->method('post')
 ```
@@ -630,7 +630,7 @@ h5::INPUT('email')->label('邮箱')->type('email')->popAndBind('{{ user.email }}
 | `h5::TEXTAREA('bio')` | `->value()`、`->required()`、`->rows()` |
 | `h5::SELECT('role')` | `->options()` 必填（缺即编译错误）；`->required()` 可选；`->value()` 写上即编译错误 |
 | `h5::INPUT('active')->type('checkbox')` | `->required()`、`->checked()` |
-| `h5::INPUT('id')->type('hidden')` | `->value()`；`->required()` 写上即编译错误 |
+| `h5::INPUT('id')->type('hidden')` | `->value()`；`->required()` 写上即编译错误；`->label()` 可选——hidden 控件不渲染 label 元素，省略即可编译，写了则由编译器的 warn 回调提示 |
 | `h5::INPUT('save')->type('submit')` | `->label()` 即按钮文字；`->value()`、`->required()` 写上即编译错误 |
 
 `name`、`label`、`options` 的键值、`column.label`、`table.empty` 都是字面量字段，写 `{{ }}` 即编译错误。

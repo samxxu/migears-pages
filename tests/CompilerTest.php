@@ -312,7 +312,7 @@ final class CompilerTest extends TestCase
         // The name is written into the tag as written, so a name that cannot be
         // one produces markup no browser can read: whitespace ends the name and
         // everything after it is read as a second attribute.
-        foreach (['data-x y', "x-on:cli\tck", 'data-x<y', 'data-x=y', 'data-x/y', "data-x\0y", 'data-x"y'] as $name) {
+        foreach (['data-x y', "x-on:cli\tck", 'data-x<y', 'data-x=y', 'data-x/y', "data-x\0y", 'data-x"y', ':', '@', '::'] as $name) {
             $this->expectError(
                 ['body' => [['type' => 'el', 'tag' => 'div', $name => 'v', 'body' => []]]],
                 'is not a legal attribute name'

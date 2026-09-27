@@ -90,8 +90,13 @@ class Compiler
      * same shapes with a message about the <attr> syntax); the array DSL and the
      * YAML front end — where a quoted key can spell any name — reach the compiler
      * unchecked unless the check sits where the name is emitted.
+     *
+     * A name also has to name something: the lookahead requires one letter, digit
+     * or underscore, so the punctuation a directive is built from cannot stand
+     * alone. `:` and `@` are legal inside a name (`:href`, `x-on:click`) and
+     * meaningless as a whole one — `<div :="z">` is markup no one wrote.
      */
-    private const ATTR_NAME_PATTERN = '/^[^\s"\'\x00-\x1F\x7F<>\/=]+$/';
+    private const ATTR_NAME_PATTERN = '/^(?=.*[A-Za-z0-9_])[^\s"\'\x00-\x1F\x7F<>\/=]+$/';
 
     /** A loop variable is emitted as a PHP variable, so it is a plain identifier. */
     private const VAR_NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
@@ -456,7 +461,8 @@ class Compiler
         // compiler emits from the node model passes through.
         if (! preg_match(self::ATTR_NAME_PATTERN, $name)) {
             $this->error("{$path}: \"{$name}\" is not a legal attribute name; an attribute name may not contain "
-                . 'whitespace, quotes, "<", ">", "/", "=" or control characters, because it is emitted exactly as written');
+                . 'whitespace, quotes, "<", ">", "/", "=" or control characters, and it needs at least one letter, '
+                . 'digit or underscore — punctuation a directive is built from cannot stand alone');
         }
 
         // Escape the literal part first, then interpolate: the ## ## sugar must

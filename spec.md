@@ -45,7 +45,7 @@ Both compilations have a purpose and are neither merged nor skipped.
 
 ### 3.3 Extremely lightweight
 
-The implementation stays in the thousand-line range (compiler ≈ 1050 lines, Renderer ≈ 80 lines). Any feature that would significantly bloat it is rejected.
+The implementation stays in the thousand-line range — the compiler and the renderer together are a handful of files, and any feature that would significantly bloat them is rejected. Exact sizes are measured by the review report rather than quoted here: a number written into prose is a number that goes stale.
 
 ### 3.4 Compilation is validation
 
@@ -467,7 +467,7 @@ Error classes:
 | Brace mismatch | interpolation contains `{{{` or `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
 | Attribute with no mount point | a passthrough attribute on a node that outputs no tag | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
 | Attribute value type error | a passthrough value is not a scalar | attribute "x" must have a scalar value, got array |
-| Illegal attribute name | the emitted name cannot be a name (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes) | "data-x y" is not a legal attribute name |
+| Illegal attribute name | the emitted name cannot be a name (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes), or it holds no letter, digit or underscore at all | "data-x y" is not a legal attribute name |
 | Empty section name | a `sections` key that is empty after trimming, so no layout can fill it | sections: section name '   ' is empty; a layout can only fill a named section |
 | Reserved path root | a path whose root is `this` or `GLOBALS` — the artefact cannot read either as the array a path assumes. A named superglobal stays legal: it reads a request table, and what it returns is escaped like any other value | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
 | Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined twice |
@@ -483,7 +483,7 @@ migears-pages/
 ├── LICENSE
 ├── src/
 │   ├── Compiler.php         the compiler (core)
-│   ├── Renderer.php         one-step rendering facade (~80 lines)
+│   ├── Renderer.php         one-step rendering facade
 │   ├── Html.php             user syntax: node factories (§10)
 │   ├── Node.php             node base class: field methods, array normalization, repeated-setting guard
 │   ├── PlainNode.php        nodes that output no tag
@@ -608,7 +608,7 @@ pages 是 miGears 框架的声明式页面编译层：以 **PHP 数组**为 DSL 
 
 ### 3.3 极轻量
 
-实现规模保持在千行量级（编译器约 1050 行，Renderer 约 80 行）。任何让实现显著膨胀的特性都拒绝。
+实现规模保持在千行量级——编译器与渲染器合计不过几个文件——任何让实现显著膨胀的特性都拒绝。具体行数由评审报告实测，这里不抄写：写进散文里的数字必然会过期。
 
 ### 3.4 编译即校验
 
@@ -1030,7 +1030,7 @@ sections.content[2].columns[2]: a column cannot specify both pop and content
 | 花括号错乱 | 插值出现 `{{{` 或 `}}}` | interpolation markers cannot run three braces ({{{ or }}}); write {{ path }} |
 | 属性无挂载点 | 透传属性出现在不输出标签的节点上 | node type: text emits no tag and cannot carry attribute "class"; wrap the content in type: el |
 | 属性值类型错误 | 透传属性值不是标量 | attribute "x" must have a scalar value, got array |
-| 属性名非法 | 写出的名字不可能成为属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符） | "data-x y" is not a legal attribute name |
+| 属性名非法 | 写出的名字不可能成为属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符），或整名不含任何字母、数字、下划线 | "data-x y" is not a legal attribute name |
 | section 名为空 | `sections` 的键 trim 后为空，没有任何布局能填上 | sections: section name '   ' is empty; a layout can only fill a named section |
 | 路径根为保留名 | 路径以 `this` 或 `GLOBALS` 为根——产物无法把它们当作路径所假设的数组来读。具名超全局仍然合法：它读的是一张请求表，返回值与其它值一样被转义 | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
 | 重复属性 | 同名透传属性出现两次 | attribute "class" defined twice |
@@ -1046,7 +1046,7 @@ migears-pages/
 ├── LICENSE
 ├── src/
 │   ├── Compiler.php         编译器（核心）
-│   ├── Renderer.php         一步渲染门面（约 80 行）
+│   ├── Renderer.php         一步渲染门面
 │   ├── Html.php             用户级语法：节点工厂（§10）
 │   ├── Node.php             节点基类：字段方法、数组归一、重复设置守卫
 │   ├── PlainNode.php        不输出标签的节点
