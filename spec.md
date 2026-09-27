@@ -232,7 +232,7 @@ The accompanying scalar type guards work the same way: `layout`, `title` must be
 | `name` | string literal | yes | field name (the `name` attribute); also the default for the `id` and the `label`'s `for` |
 | `id` | string literal | no | defaults to `name`; when given explicitly it overrides it and also drives the `label`'s `for` (output once, no longer defaulted) |
 | `bind` | JS name/path | no | the framework binding attribute, outputs `bind="user.email"`; the value is a browser-side name — writing `{{ }}` is a compile error |
-| `label` | string literal | yes | the label text; for `submit` types the button text |
+| `label` | string literal | yes, except `hidden` | the label text; for `submit` types the button text. A hidden field renders as a bare `<input type="hidden">` with no label element, so it needs none — and a label written on one is reported through the warn callback instead of being dropped in silence |
 | `input` | enum | no | see below, defaults to `text` |
 | `value` | path | no | the bound value, compiled to `value="## $path ?? '' ##"`; may be written as `{{ user.name }}` (recommended, the data is more visible); not supported on `submit` (buttons use `label`) |
 | `required` | bool | no | defaults to false; outputs `required` on inputs that support it; `true` on `hidden` / `submit` is a compile error |
@@ -469,6 +469,7 @@ Error classes:
 | Attribute value type error | a passthrough value is not a scalar | attribute "x" must have a scalar value, got array |
 | Illegal attribute name | the emitted name cannot be a name (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes) | "data-x y" is not a legal attribute name |
 | Empty section name | a `sections` key that is empty after trimming, so no layout can fill it | sections: section name '   ' is empty; a layout can only fill a named section |
+| Reserved path root | a path whose root is `this` or `GLOBALS` — the artefact cannot read either as the array a path assumes. A named superglobal stays legal: it reads a request table, and what it returns is escaped like any other value | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
 | Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined twice |
 
 It fails fast: the first error throws, and the `CompileException` carries the path from root to node.
@@ -542,6 +543,8 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Interpolation symbol | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` error; adjacent `{{ a }}{{ b }}` allowed |
 | Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
 | Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value / template names inside the view roots (`layout` and `component.name`, accepted forms and refused ones) |
+| Field label | a hidden field compiles without a label and reports one that is written (warn callback), while every other input still fails without it |
+| Reserved path roots | `{{ this.id }}`, `{{ GLOBALS }}` and `{{ GLOBALS.x }}` are refused, while `{{ _GET.token }}` still compiles and reaches the artefact as `$_GET['token']` |
 | Frontend hooks | the documented hooks the array model cannot exercise on its own, driven by a stand-in frontend: a name mapping that folds two spellings onto one attribute, and explicit attributes that skip the whitelist and the mapping. Both raise the core's path-carrying errors — collision with a node field, a duplicate attribute, and two spellings that resolve to one name |
 | Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
@@ -792,7 +795,7 @@ section 名同样做 trim：section 是按名字填充的，`" content "` 编译
 | `name` | string 字面量 | 是 | 字段名（`name` 属性）；同时是 `id` 与 `label` 的 `for` 的默认值 |
 | `id` | string 字面量 | 否 | 默认等于 `name`；显式给出时覆盖它，并同时驱动 `label` 的 `for`（只输出一次，不再默认输出） |
 | `bind` | JS 变量名/路径 | 否 | 前端框架的绑定属性，输出 `bind="user.email"`；值是浏览器端名字，写 `{{ }}` 即编译错误 |
-| `label` | string 字面量 | 是 | 标签文本；`submit` 类型时为按钮文字 |
+| `label` | string 字面量 | 是，`hidden` 除外 | 标签文本；`submit` 类型时为按钮文字。hidden 字段只渲染一个裸 `<input type="hidden">`，没有 label 元素，因此不必填——写了则经 warn 回调报出，不再静默丢弃 |
 | `input` | enum | 否 | 见下，默认 `text` |
 | `value` | path | 否 | 绑定值，编译为 `value="## $path ?? '' ##"`；可写成 `{{ user.name }}`（推荐，数据更显眼）；不支持 `submit`（按钮文字用 `label`） |
 | `required` | bool | 否 | 默认 false；在支持该属性的 input 上输出 `required`，`hidden` / `submit` 上写 `true` 属编译错误 |
@@ -1029,6 +1032,7 @@ sections.content[2].columns[2]: a column cannot specify both pop and content
 | 属性值类型错误 | 透传属性值不是标量 | attribute "x" must have a scalar value, got array |
 | 属性名非法 | 写出的名字不可能成为属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符） | "data-x y" is not a legal attribute name |
 | section 名为空 | `sections` 的键 trim 后为空，没有任何布局能填上 | sections: section name '   ' is empty; a layout can only fill a named section |
+| 路径根为保留名 | 路径以 `this` 或 `GLOBALS` 为根——产物无法把它们当作路径所假设的数组来读。具名超全局仍然合法：它读的是一张请求表，返回值与其它值一样被转义 | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
 | 重复属性 | 同名透传属性出现两次 | attribute "class" defined twice |
 
 失败即中止（fail-fast）：首个错误抛出，`CompileException` 携带从根到节点的路径。
@@ -1102,6 +1106,8 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 插值符号 | `{{{ a }}}` / `{{ a }}}` / `{{{ a }}` 报错；相邻的 `{{ a }}{{ b }}` 放行 |
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
 | 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 / 模板名不越出视图根（`layout` 与 `component.name` 的接受与拒绝形态） |
+| 字段 label | hidden 字段不写 label 可编译，写了则经 warn 回调报出；其它 input 缺 label 仍报错 |
+| 保留路径根 | `{{ this.id }}`、`{{ GLOBALS }}`、`{{ GLOBALS.x }}` 报错，而 `{{ _GET.token }}` 仍可编译并以 `$_GET['token']` 进入产物 |
 | 前端钩子 | 数组模型自身触达不到的文档化钩子，由替身前端驱动：把两种拼写折成同一属性的名字映射，以及跳过白名单与映射的显式属性。两者都抛核心带路径的错误——与节点字段冲突、属性重复、两种拼写落到同一名字 |
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |

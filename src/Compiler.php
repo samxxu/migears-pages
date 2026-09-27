@@ -35,6 +35,9 @@ class Compiler
 
     private const INPUT_TYPES = ['text', 'password', 'email', 'number', 'textarea', 'select', 'checkbox', 'hidden', 'submit'];
 
+    /** The input a field gets when it does not name one. */
+    private const DEFAULT_INPUT = 'text';
+
     /**
      * Fields that only mean something for particular input types. Written
      * anywhere else they used to compile and then leave no trace in the output
@@ -105,6 +108,19 @@ class Compiler
     private const RESERVED_VARIABLES = [
         'this', 'GLOBALS', '_GET', '_POST', '_SERVER', '_ENV', '_COOKIE', '_FILES', '_REQUEST', '_SESSION',
     ];
+
+    /**
+     * Reserved names a path may not start with. Reading is narrower than writing:
+     * the whole list is refused for a loop variable because one that shadows $_GET
+     * rewrites it, while a superglobal read returns a request table the page is
+     * entitled to render, escaped like any other value. These two cannot be read
+     * as the array a path assumes — the artefact's $this is the template object,
+     * and $GLOBALS is every global at once rather than the data this view was
+     * handed, which is what the write direction refuses them for as well.
+     *
+     * @var list<string>
+     */
+    private const READ_RESERVED_ROOTS = ['this', 'GLOBALS'];
 
     /**
      * Alpine spells these directives with a colon. The hyphen form is not an
@@ -719,7 +735,23 @@ class Compiler
         // the submit button, so it is escaped where it is used as an attribute
         // value instead of in place.
         $name = $this->escapeAttrValue($this->literal($this->requireString($n, 'name', $path), $path, 'name'), $path);
-        $label = $this->literal($this->requireString($n, 'label', $path), $path, 'label');
+        // A hidden control renders as a bare <input type="hidden">, so it has no
+        // label element to carry: requiring one would force every uniform field list
+        // to invent a value, and a value that is written would be dropped without a
+        // word — the silent loss this compiler refuses. The label is therefore
+        // optional for hidden fields, and one that is supplied is reported through
+        // the warn callback instead of vanishing. Every other input still needs it.
+        $hidden = ($n['input'] ?? self::DEFAULT_INPUT) === 'hidden';
+        if (array_key_exists('label', $n)) {
+            $label = $this->literal($this->requireString($n, 'label', $path), $path, 'label');
+            if ($hidden && $this->warn !== null) {
+                ($this->warn)("{$path}: a hidden field has no label element, so label \"{$label}\" is dropped");
+            }
+        } elseif ($hidden) {
+            $label = '';
+        } else {
+            $this->error("{$path}: missing string field \"label\"");
+        }
         // The label's `for` and the control's `id` are the same identity — and it
         // defaults to the field name, which is what keeps HTML hooks and the DTO
         // key aligned. An explicit id overrides it instead of being emitted a
@@ -733,7 +765,7 @@ class Compiler
             $path,
             true
         );
-        $input = $this->optional($n, 'input', 'text');
+        $input = $this->optional($n, 'input', self::DEFAULT_INPUT);
         if (! is_string($input) || ! in_array($input, self::INPUT_TYPES, true)) {
             $this->error("{$path}: invalid input type \"" . (is_string($input) ? $input : gettype($input)) . '"');
         }
@@ -1036,7 +1068,14 @@ class Compiler
         return $negated ? "!({$php} ?? null)" : "{$php} ?? null";
     }
 
-    /** Compile a dot path into PHP array access: user.name -> $user['name']. */
+    /**
+     * Compile a dot path into PHP array access: user.name -> $user['name'].
+     *
+     * The root is checked before it becomes a variable read: `{{ this.x }}` used to
+     * compile to `$this['x'] ?? ''`, which dies the moment the artefact runs — the
+     * same fatal class as re-assigning the name in a loop, caught in the other
+     * direction.
+     */
     private function compilePath(string $path, string $where): string
     {
         if (! preg_match(self::PATH_PATTERN, $path)) {
@@ -1044,7 +1083,14 @@ class Compiler
         }
 
         $segments = explode('.', $path);
-        $php = '$' . array_shift($segments);
+        $root = (string) array_shift($segments);
+        if (in_array($root, self::READ_RESERVED_ROOTS, true)) {
+            $this->error("{$where}: \"{$root}\" cannot be the root of a path — " . ($root === 'this'
+                ? '$this in the artefact is the template object, so a read like $this[\'x\'] cannot run'
+                : '$GLOBALS is every global at once, not the data this view was handed'));
+        }
+
+        $php = '$' . $root;
         foreach ($segments as $segment) {
             $php .= "['" . $this->str($segment) . "']";
         }

@@ -501,6 +501,46 @@ final class CompilerTest extends TestCase
         $this->assertStringContainsString('<input type="submit" value="Save">', $out);
     }
 
+    public function testHiddenFieldTakesNoLabelAndReportsOneThatIsGiven(): void
+    {
+        // A hidden control renders as a bare <input type="hidden">, so it has no
+        // label element to carry: requiring one forced every uniform field list to
+        // invent a value, and a value that was written was dropped without a word.
+        $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+            ['name' => 't', 'input' => 'hidden', 'value' => 'user.token'],
+        ]]]]);
+        // A hidden control carries no id either: nothing labels it, and an explicit
+        // id is the only reason one is emitted.
+        $this->assertStringContainsString('<input type="hidden" name="t" value="## $user[\'token\'] ?? \'\' ##">', $out);
+        $this->assertStringNotContainsString('<label', $out);
+
+        $warnings = [];
+        $compiler = new Compiler(function (string $message) use (&$warnings): void {
+            $warnings[] = $message;
+        });
+        $compiler->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+            ['name' => 't', 'input' => 'hidden', 'value' => 'user.token', 'label' => 'IGNORED'],
+        ]]]]);
+
+        $this->assertCount(1, $warnings, 'a label written on a hidden field is dropped, so it has to be reported');
+        $this->assertStringContainsString('hidden field has no label element', $warnings[0]);
+        $this->assertStringContainsString('IGNORED', $warnings[0]);
+    }
+
+    public function testEveryOtherInputStillNeedsALabel(): void
+    {
+        // Only hidden is exempt: the label is the visible text of every other input,
+        // and the submit button's own value.
+        foreach (['text', 'password', 'textarea', 'select', 'checkbox', 'submit'] as $input) {
+            $this->expectError(
+                ['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
+                    ['name' => 'q', 'input' => $input, 'options' => ['a' => 'A']],
+                ]]]],
+                'missing string field "label"'
+            );
+        }
+    }
+
     public function testFormMethodDefaultsToPostAndRejectsBadValues(): void
     {
         $out = $this->compile(['body' => [['type' => 'form', 'action' => '/s', 'fields' => [
@@ -827,6 +867,28 @@ final class CompilerTest extends TestCase
         $this->expectError(
             ['body' => [['type' => 'text', 'text' => '{{ a[b] }}']]],
             'invalid path'
+        );
+    }
+
+    public function testReservedPathRootsAreRejected(): void
+    {
+        // The read direction of the rule a loop variable follows: $this in the
+        // artefact is the template object, so `$this['x'] ?? ''` dies the moment the
+        // page runs, and $GLOBALS is every global at once rather than the data this
+        // view was handed.
+        foreach (['{{ this.id }}', '{{ GLOBALS }}', '{{ GLOBALS.x }}'] as $text) {
+            $this->expectError(['body' => [['type' => 'text', 'text' => $text]]], 'cannot be the root of a path');
+        }
+    }
+
+    public function testNamedSuperglobalReadsStayLegal(): void
+    {
+        // A named superglobal is a request table a page may render, and what it
+        // returns is escaped like any other value — so only the two names that cannot
+        // be read as an array are refused.
+        $this->assertSame(
+            "## \$_GET['token'] ?? '' ##",
+            $this->compile(['body' => [['type' => 'text', 'text' => '{{ _GET.token }}']]])
         );
     }
 
