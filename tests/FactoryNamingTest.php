@@ -147,7 +147,7 @@ final class FactoryNamingTest extends TestCase
     private function sources(): array
     {
         $root = dirname(__DIR__);
-        $paths = [$root . '/README.md', $root . '/spec.md'];
+        $paths = [$root . '/README.md', $root . '/SPEC.md'];
 
         foreach (['docs', 'src', 'tests', 'examples', 'bin'] as $dir) {
             $base = $root . '/' . $dir;

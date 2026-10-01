@@ -20,6 +20,20 @@ Declarative page definitions for PHP, compiled to miGears Template files (`.tpl.
 - Format frontends (`migears/xml-pages`, `migears/yaml-pages`) inherit the compiler and only implement `parse()` plus a couple of spelling hooks
 - Deliberately out of scope: business logic, event handling, state management, routing — those belong to the front-end framework you pair it with
 
+## Boundaries
+
+**In scope**
+
+- The array IR as the single source of truth, plus the `Html` factory that normalizes to it: the node vocabulary `text` / `heading` / `link` / `if` / `each` / `form` / `table` / `el` / `component` and the embedded `field` / `column` — one vocabulary that `migears/xml-pages` and `migears/yaml-pages` parse their own formats into.
+- The compile step itself: `Compiler::compile()` translating a declaration into `.tpl.php` sugar, compile-time validation of structure, fields, paths and keys (nothing silently dropped), `{{ path }}` interpolation with auto-escaping, and front-end framework attribute passthrough.
+- The `Renderer` facade (array page straight to HTML through `migears/template`, content-addressed cache), and the front-end integration points (`parse()` plus spelling hooks) the two frontends inherit.
+
+**Not in scope (by design)**
+
+- Its own source-text syntax and CLI: an array has no "source file" form, so call `compile()` directly — the file/directory CLI belongs to `migears/xml-pages` and `migears/yaml-pages`.
+- Runtime: compilation is the only entry point, so rendering and the second compilation belong to `migears/template`; the declaration layer never enters runtime.
+- Business logic, event handling, state management and routing — left to the front-end framework you pair it with — and bundled components: `migears/xml-pages` / `migears/yaml-pages` ship four built-ins; here you bring your own.
+
 ## How It Works
 
 The page declaration is a PHP array — the single source of truth. The `Html` factory writes that array for you: `Compiler::compile()` normalizes its nodes at the entry point, so a page built with `h5::` calls and a hand-written array take exactly the same path from there on. Everything else is derived:
@@ -160,7 +174,7 @@ Keys on a node fall into three groups: DSL fields (consumed by the node), forwar
 
 Structural children (`body`, `sections.<name>`, `then`, `else`, `each.body`, `el.body`, `column.content`) and `fields` / `columns` are **lists**; `sections`, `options` and `component.data` are **maps**. Writing a single node without its list wrapper is an array too, so it is rejected where it happens rather than failing later with a message about the wrong thing.
 
-The full node grammar, interpolation rules and error catalogue are specified in `spec.md`.
+The full node grammar, interpolation rules and error catalogue are specified in `SPEC.md`.
 
 ## Front-end Packages
 
@@ -284,6 +298,20 @@ MIT
 - `Renderer` 门面：从页面声明一步渲染出 HTML
 - 格式前端（`migears/xml-pages`、`migears/yaml-pages`）继承编译器，只实现 `parse()` 与少量拼写钩子
 - 明确不做：业务逻辑、事件处理、状态管理、路由 —— 这些交给你搭配的前端框架
+
+## 边界
+
+**范围内**
+
+- 以数组 IR 为唯一事实标准，以及把它归一出来的 `Html` 工厂：节点词表 `text` / `heading` / `link` / `if` / `each` / `form` / `table` / `el` / `component` 与内嵌的 `field` / `column` —— 这正是 `migears/xml-pages`、`migears/yaml-pages` 把各自格式解析成的同一套词表。
+- 编译这一步本身：`Compiler::compile()` 把声明翻译为 `.tpl.php` 糖语法；对结构、字段、路径、键做编译期校验（绝不静默丢弃）；`{{ path }}` 插值自动转义；前端框架属性透传。
+- `Renderer` 门面（数组页面经 `migears/template` 一步渲染为 HTML，内容寻址缓存），以及两个前端包继承的前端集成点（`parse()` 与拼写钩子）。
+
+**范围外（刻意不做）**
+
+- 自身的源文本语法与 CLI：数组没有「源文件」形态，直接调用 `compile()` —— 文件/目录级 CLI 属于 `migears/xml-pages` 与 `migears/yaml-pages`。
+- 运行期：编译是唯一入口，渲染与第二次编译属于 `migears/template`；声明层不进入运行期。
+- 业务逻辑、事件处理、状态管理与路由 —— 交给你搭配的前端框架；以及内置组件：`migears/xml-pages` / `migears/yaml-pages` 各随包分发四个内置组件，本包要自己写。
 
 ## 工作原理
 
@@ -425,7 +453,7 @@ $page = [
 
 结构性字段（`body`、`sections.<名>`、`then`、`else`、`each.body`、`el.body`、`column.content`）与 `fields` / `columns` 是**列表**；`sections`、`options`、`component.data` 是**映射**。单个节点漏掉列表包裹时仍是数组，因此会在发生处被拦下，而不是留到更深处报一个指错对象的错误。
 
-完整节点文法、插值规则与错误清单见 `spec.md`。
+完整节点文法、插值规则与错误清单见 `SPEC.md`。
 
 ## 前端包
 

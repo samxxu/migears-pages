@@ -469,7 +469,7 @@ Error classes:
 | Attribute value type error | a passthrough value is not a scalar | attribute "x" must have a scalar value, got array |
 | Illegal attribute name | the emitted name cannot be a name (whitespace, quotes, `<`, `>`, `/`, `=`, control bytes), or it holds no letter, digit or underscore at all | "data-x y" is not a legal attribute name |
 | Empty section name | a `sections` key that is empty after trimming, so no layout can fill it | sections: section name '   ' is empty; a layout can only fill a named section |
-| Reserved path root | a path whose root is `this` or `GLOBALS` — the artefact cannot read either as the array a path assumes. A named superglobal stays legal: it reads a request table, and what it returns is escaped like any other value | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
+| Reserved path root | a path whose root is a name a loop variable may not take either: `this` and `GLOBALS` cannot be read as the array a path assumes, and a superglobal reads request state the view model keeps out of a path | {{ _GET.token }}: "_GET" cannot be the root of a path — a superglobal is request state the view model keeps out of a path |
 | Duplicate attribute | the same passthrough attribute appears twice | attribute "class" defined twice |
 
 It fails fast: the first error throws, and the `CompileException` carries the path from root to node.
@@ -519,7 +519,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Table | pop columns (`{{ row.x }}`) / content columns / empty / default and custom as / row-variable validation (bare path, other variable errors) / pop+content together error / missing columns error / content and columns non-array or written as mapping each give a readable error |
 | bind | any tag and field can output `bind="js.name"`; values containing `{{ }}` or not a JS name error; `popAndBind` writes both value and bind (including the `x-model` spelling) |
 | Field id | `id` defaults to `name` (the label's `for` same value); an explicit `id` overrides it and is output once |
-| Factory naming | `Html`'s 13 static factories declared all-caps (`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`) with no extra static methods; `THEN` / `ELSE` the only two uppercase member methods; all factory-call spellings in README, `docs/`, `spec.md`, examples, source, and tests are all-caps (anti-doc-drift, see §10) |
+| Factory naming | `Html`'s 13 static factories declared all-caps (`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`) with no extra static methods; `THEN` / `ELSE` the only two uppercase member methods; all factory-call spellings in README, `docs/`, `SPEC.md`, examples, source, and tests are all-caps (anti-doc-drift, see §10) |
 | Page root | body not an array or written as a single node mapping, layout / title not a string, sections not a mapping, sections value not a list (including null) |
 | Collection shape | then / else / body / content / sections values / fields / columns written as a keyed mapping give a readable error, not falling through to `content[type]: node must be an object`; `sections`, `component.data` written as a list give a readable error |
 | Warning leakage | data-driven assertions over all malformed inputs: only a `CompileException` (no `TypeError`) and zero PHP warnings |
@@ -544,7 +544,7 @@ Unit tests are driven by array page definitions and assert that the compiled out
 | Abstract layer | base `compileSource()` throws, pointing to the frontend packages |
 | Validation branches | one guard test per rule, so a rule that stops firing fails a test: page field whitelist / layout-without-sections and sections-without-layout / required page content / heading level type / `each` as and index variable names / table row-variable name / field shape inside `fields` / input-type enum / textarea rows / select options map / column shape and required label / `bind` value shape / boolean attribute value / template names inside the view roots (`layout` and `component.name`, accepted forms and refused ones) |
 | Field label | a hidden field compiles without a label and reports one that is written (warn callback), while every other input still fails without it |
-| Reserved path roots | `{{ this.id }}`, `{{ GLOBALS }}` and `{{ GLOBALS.x }}` are refused, while `{{ _GET.token }}` still compiles and reaches the artefact as `$_GET['token']` |
+| Reserved path roots | `{{ this.id }}`, `{{ GLOBALS }}` and `{{ GLOBALS.x }}` are refused, and so are the named superglobals (`{{ _GET.token }}` and the rest of the list), in every read field |
 | Frontend hooks | the documented hooks the array model cannot exercise on its own, driven by a stand-in frontend: a name mapping that folds two spellings onto one attribute, and explicit attributes that skip the whitelist and the mapping. Both raise the core's path-carrying errors — collision with a node field, a duplicate attribute, and two spellings that resolve to one name |
 | Render | Renderer: body page / layout+sections / auto-escaping / automatic cache-dir creation / a cache directory it cannot create and a cache file it cannot write are both reported / rerender on declaration change / component resolution through template paths / `clearCache()` removes derived pages and keeps foreign files |
 | Html factory | the 13 factories normalize per the §10 table; each case asserts factory compilation output == the same-content hand-written array byte-for-byte; field / column normalize inside their own containers; nesting (each → el → text) normalizes recursively; Renderer accepts factory nodes directly; unknown attributes, out-of-range level, missing required still throw path-carrying `CompileException` from the compiler |
@@ -1032,7 +1032,7 @@ sections.content[2].columns[2]: a column cannot specify both pop and content
 | 属性值类型错误 | 透传属性值不是标量 | attribute "x" must have a scalar value, got array |
 | 属性名非法 | 写出的名字不可能成为属性名（空白、引号、`<`、`>`、`/`、`=`、控制字符），或整名不含任何字母、数字、下划线 | "data-x y" is not a legal attribute name |
 | section 名为空 | `sections` 的键 trim 后为空，没有任何布局能填上 | sections: section name '   ' is empty; a layout can only fill a named section |
-| 路径根为保留名 | 路径以 `this` 或 `GLOBALS` 为根——产物无法把它们当作路径所假设的数组来读。具名超全局仍然合法：它读的是一张请求表，返回值与其它值一样被转义 | {{ this.id }}: "this" cannot be the root of a path — $this in the artefact is the template object, so a read like $this['x'] cannot run |
+| 路径根为保留名 | 路径根是循环变量也不得使用的名字：`this`、`GLOBALS` 无法被当作路径所假设的数组来读，超全局读的则是视图模型本应挡在路径之外的请求状态 | {{ _GET.token }}: "_GET" cannot be the root of a path — a superglobal is request state the view model keeps out of a path |
 | 重复属性 | 同名透传属性出现两次 | attribute "class" defined twice |
 
 失败即中止（fail-fast）：首个错误抛出，`CompileException` 携带从根到节点的路径。
@@ -1082,7 +1082,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 表格 | pop 列（`{{ row.x }}`）/ content 列 / empty / as 默认与自定义 / 行变量校验（裸路径、别的变量报错）/ pop+content 同存报错 / columns 缺失报错 / content 与 columns 非数组、写成映射均报可读错误 |
 | bind | 任意标签与字段可输出 `bind="js.name"`；值含 `{{ }}` 或不是 JS 名字时报错；`popAndBind` 同时写出 value 与 bind（含 `x-model` 拼写） |
 | 字段 id | `id` 默认等于 `name`（label 的 `for` 同值）；显式 `id` 覆盖它且只输出一次 |
-| 工厂命名 | `Html` 的 13 个静态工厂声明为全大写（`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`），且没有多出别的静态方法；`THEN` / `ELSE` 是仅有的两个大写成员方法；README、`docs/`、`spec.md`、示例、源码与测试里出现的工厂调用拼写全部大写（防文档漂移，见 §10） |
+| 工厂命名 | `Html` 的 13 个静态工厂声明为全大写（`TEXT` / `HEADING` / `LINK` / `IF` / `EACH` / `FORM` / `INPUT` / `TEXTAREA` / `SELECT` / `TABLE` / `COL` / `COMPONENT` / `EL`），且没有多出别的静态方法；`THEN` / `ELSE` 是仅有的两个大写成员方法；README、`docs/`、`SPEC.md`、示例、源码与测试里出现的工厂调用拼写全部大写（防文档漂移，见 §10） |
 | 页面根 | body 非数组或写成单个节点映射、layout / title 非字符串、sections 非映射、sections 值非列表（含 null） |
 | 集合形态 | then / else / body / content / sections 值 / fields / columns 写成键值映射时报可读错误，不落到 `content[type]: 节点必须是对象`；`sections`、`component.data` 写成列表时报可读错误 |
 | 警告泄漏 | 数据驱动断言全部畸形输入：只抛 CompileException（不是 TypeError），且零 PHP 警告 |
@@ -1107,7 +1107,7 @@ composer 依赖说明：运行期执行的是生成的模板，依赖 migears/te
 | 抽象层 | 基类 `compileSource()` 抛错提示使用前端包 |
 | 校验分支 | 每条规则一个守护测试，规则失效即测试变红：页面字段白名单 / 有 layout 无 sections 与有 sections 无 layout / 页面内容不可缺 / heading level 类型 / `each` 的 as 与 index 变量名 / table 行变量名 / `fields` 里 field 的形态 / input 类型枚举 / textarea rows / select 的 options 映射 / column 形态与必填 label / `bind` 取值的形态 / 布尔属性值 / 模板名不越出视图根（`layout` 与 `component.name` 的接受与拒绝形态） |
 | 字段 label | hidden 字段不写 label 可编译，写了则经 warn 回调报出；其它 input 缺 label 仍报错 |
-| 保留路径根 | `{{ this.id }}`、`{{ GLOBALS }}`、`{{ GLOBALS.x }}` 报错，而 `{{ _GET.token }}` 仍可编译并以 `$_GET['token']` 进入产物 |
+| 保留路径根 | `{{ this.id }}`、`{{ GLOBALS }}`、`{{ GLOBALS.x }}` 报错，具名超全局（`{{ _GET.token }}` 及其余名单）同样报错，且在所有读取字段上一并生效 |
 | 前端钩子 | 数组模型自身触达不到的文档化钩子，由替身前端驱动：把两种拼写折成同一属性的名字映射，以及跳过白名单与映射的显式属性。两者都抛核心带路径的错误——与节点字段冲突、属性重复、两种拼写落到同一名字 |
 | 渲染 | Renderer：body 页 / layout+sections / 自动转义 / 缓存目录自动创建 / 建不出的缓存目录与写不成的缓存文件都被报告 / 声明变更重渲染 / 组件经模板路径解析 / `clearCache()` 清理派生页面并保留外来文件 |
 | Html 工厂 | 13 个工厂的归一结果与 §10 表格一致；每例断言「工厂编译产物 == 同内容手写数组的产物」逐字节相同；field / column 在各自容器内归一；嵌套（each → el → text）递归归一；Renderer 直接接受工厂节点；未知属性、越界 level、缺必填仍由编译器抛带路径的 `CompileException` |

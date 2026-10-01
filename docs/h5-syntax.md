@@ -1,11 +1,11 @@
 # miGears/pages User Syntax Guide (h5 factory)
 
-> This file is the complete user-level syntax reference for `miGears/pages`, backed by the implementation `MiGears\Pages\Html` (contract in §10 of `spec.md`).
+> This file is the complete user-level syntax reference for `miGears/pages`, backed by the implementation `MiGears\Pages\Html` (contract in §10 of `SPEC.md`).
 > The factory alias is chosen by the caller: `use MiGears\Pages\Html as h5;`. This document uses `h5` throughout; writing `h` works just as well.
 
 ## 1. Position of the builder in the overall system
 
-`migears/pages` takes a PHP array as input, and the shape of that array is exactly the IR contract—the "page declaration, field rules, node grammar, data binding" defined in §4 through §7 of `spec.md`. The fluent builder does not change this contract: every factory method returns a node object, chained methods write fields, and the compiler normalizes these objects into arrays at the single `compile()` entry point. Everything after that is identical to writing the array by hand.
+`migears/pages` takes a PHP array as input, and the shape of that array is exactly the IR contract—the "page declaration, field rules, node grammar, data binding" defined in §4 through §7 of `SPEC.md`. The fluent builder does not change this contract: every factory method returns a node object, chained methods write fields, and the compiler normalizes these objects into arrays at the single `compile()` entry point. Everything after that is identical to writing the array by hand.
 
 ```php
 h5::HEADING(2)->text('User list')->id('usersTitle')
@@ -401,17 +401,17 @@ Derived pages are addressed by their content (`page_<md5>.tpl.php`), and are not
 
 **The method set itself is the documentation.** Nodes that emit no tag have no attribute methods, so `h5::TEXT('x')->class('a')` is an `undefined method` at the PHP level; `h5::TEXTAREA('bio')->type('email')` likewise errors at the PHP level because control methods only grow on `h5::INPUT`. Following the IDE's autocomplete list lets you read off every writable field of a node.
 
-**Validation still lives in exactly one place.** The factory does not check the node vocabulary: unknown attributes, an out-of-range `level`, a misplaced `placeholder`, and missing required fields are all thrown as path-carrying `CompileException`s by the compiler, so the four entry points—array, XML, YAML, and h5—produce identical error wording. The cost is an extra layer at the `compile()` entry that recursively normalizes `Node` into arrays, making method names and parameter names part of the public API (renaming is a breaking change) and adding a few classes over a plain function set; also, the all-caps method names deviate from the camelCase requirement of PSR-1 / PSR-12, a deliberate exception at this layer. These trade-offs are recorded in §10 of `spec.md`.
+**Validation still lives in exactly one place.** The factory does not check the node vocabulary: unknown attributes, an out-of-range `level`, a misplaced `placeholder`, and missing required fields are all thrown as path-carrying `CompileException`s by the compiler, so the four entry points—array, XML, YAML, and h5—produce identical error wording. The cost is an extra layer at the `compile()` entry that recursively normalizes `Node` into arrays, making method names and parameter names part of the public API (renaming is a breaking change) and adding a few classes over a plain function set; also, the all-caps method names deviate from the camelCase requirement of PSR-1 / PSR-12, a deliberate exception at this layer. These trade-offs are recorded in §10 of `SPEC.md`.
 
 ---
 # miGears/pages 用户语法说明（h5 工厂）
 
-> 本文件是 `miGears/pages` 用户级语法的完整说明，对应实现 `MiGears\Pages\Html`（契约见 `spec.md` 第 10 节）。
+> 本文件是 `miGears/pages` 用户级语法的完整说明，对应实现 `MiGears\Pages\Html`（契约见 `SPEC.md` 第 10 节）。
 > 工厂别名由调用方选择：`use MiGears\Pages\Html as h5;`，本文统一用 `h5`；写成 `h` 同样成立。
 
 ## 一、构造器在整套体系里的位置
 
-`migears/pages` 的输入是一份 PHP 数组，这份数组的形状就是它的 IR 契约——`spec.md` 第 4 到第 7 节定义的「页面声明、字段规则、节点文法、数据绑定」。流式构造器不修改这份契约：每个工厂方法返回一个节点对象，链式方法写入字段，编译器在 `compile()` 入口把这些对象归一成数组，之后的一切与手写数组完全相同。
+`migears/pages` 的输入是一份 PHP 数组，这份数组的形状就是它的 IR 契约——`SPEC.md` 第 4 到第 7 节定义的「页面声明、字段规则、节点文法、数据绑定」。流式构造器不修改这份契约：每个工厂方法返回一个节点对象，链式方法写入字段，编译器在 `compile()` 入口把这些对象归一成数组，之后的一切与手写数组完全相同。
 
 ```php
 h5::HEADING(2)->text('用户列表')->id('usersTitle')
@@ -807,4 +807,4 @@ $renderer->clearCache();   // 清掉本渲染器写出的派生页面，返回�
 
 **方法集合本身是文档。** 不输出标签的节点没有属性方法，所以 `h5::TEXT('x')->class('a')` 在 PHP 层就是 `undefined method`；`h5::TEXTAREA('bio')->type('email')` 同样在 PHP 层报错，因为控件方法只长在 `h5::INPUT` 上。顺着 IDE 的补全列表就能把一个节点的全部可写字段看一遍。
 
-**校验仍然只有一处。** 工厂不检查节点词表：未知属性、越界的 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器抛带路径的 `CompileException`——数组、XML、YAML 与 h5 四个入口的错误措辞因此完全一致。代价是 `compile()` 入口多了一层把 `Node` 递归归一为数组的处理，方法名与参数名成为公开 API（重命名即破坏性变更），实现上也比纯函数集合多出几个类；另外全大写方法名偏离了 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。这些取舍记录在 `spec.md` 第 10 节。
+**校验仍然只有一处。** 工厂不检查节点词表：未知属性、越界的 `level`、错放的 `placeholder`、缺失的必填字段，全部由编译器抛带路径的 `CompileException`——数组、XML、YAML 与 h5 四个入口的错误措辞因此完全一致。代价是 `compile()` 入口多了一层把 `Node` 递归归一为数组的处理，方法名与参数名成为公开 API（重命名即破坏性变更），实现上也比纯函数集合多出几个类；另外全大写方法名偏离了 PSR-1 / PSR-12 的 camelCase 要求，属于本层有意的例外。这些取舍记录在 `SPEC.md` 第 10 节。

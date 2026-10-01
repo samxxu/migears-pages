@@ -102,30 +102,22 @@ class Compiler
     private const VAR_NAME_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
     /**
-     * Names a loop variable may not take. "$this" and "$GLOBALS" cannot be
-     * re-assigned at all, so the artefact parses as written and then dies — a
-     * fatal error the compiler would have produced itself. A superglobal name is
-     * accepted by PHP but shadows the real one for the rest of the render, so the
-     * loop would quietly rewrite $_GET rather than hold the iteration's value.
+     * Names neither a loop variable nor a path root may take. A loop variable is
+     * emitted as a real PHP variable: "$this" and "$GLOBALS" cannot be re-assigned
+     * at all, so the artefact parses as written and then dies — a fatal error the
+     * compiler would have produced itself — while a superglobal name is accepted by
+     * PHP and shadows the real one for the rest of the render, so the loop would
+     * quietly rewrite $_GET rather than hold the iteration's value. A path root is
+     * a read, and reading is not narrower: the artefact's $this is the template
+     * object and $GLOBALS is every global at once, so neither is the array a path
+     * assumes, and a superglobal would read request state the view model keeps out
+     * of a path.
      *
      * @var list<string>
      */
     private const RESERVED_VARIABLES = [
         'this', 'GLOBALS', '_GET', '_POST', '_SERVER', '_ENV', '_COOKIE', '_FILES', '_REQUEST', '_SESSION',
     ];
-
-    /**
-     * Reserved names a path may not start with. Reading is narrower than writing:
-     * the whole list is refused for a loop variable because one that shadows $_GET
-     * rewrites it, while a superglobal read returns a request table the page is
-     * entitled to render, escaped like any other value. These two cannot be read
-     * as the array a path assumes — the artefact's $this is the template object,
-     * and $GLOBALS is every global at once rather than the data this view was
-     * handed, which is what the write direction refuses them for as well.
-     *
-     * @var list<string>
-     */
-    private const READ_RESERVED_ROOTS = ['this', 'GLOBALS'];
 
     /**
      * Alpine spells these directives with a colon. The hyphen form is not an
@@ -1078,9 +1070,10 @@ class Compiler
      * Compile a dot path into PHP array access: user.name -> $user['name'].
      *
      * The root is checked before it becomes a variable read: `{{ this.x }}` used to
-     * compile to `$this['x'] ?? ''`, which dies the moment the artefact runs — the
-     * same fatal class as re-assigning the name in a loop, caught in the other
-     * direction.
+     * compile to `$this['x'] ?? ''`, which dies the moment the artefact runs, and a
+     * superglobal root reads request state the view model keeps out of a path. Both
+     * are the names a loop variable already refuses — reading is not narrower than
+     * writing.
      */
     private function compilePath(string $path, string $where): string
     {
@@ -1090,10 +1083,13 @@ class Compiler
 
         $segments = explode('.', $path);
         $root = (string) array_shift($segments);
-        if (in_array($root, self::READ_RESERVED_ROOTS, true)) {
-            $this->error("{$where}: \"{$root}\" cannot be the root of a path — " . ($root === 'this'
-                ? '$this in the artefact is the template object, so a read like $this[\'x\'] cannot run'
-                : '$GLOBALS is every global at once, not the data this view was handed'));
+        if (in_array($root, self::RESERVED_VARIABLES, true)) {
+            $reason = match (true) {
+                str_starts_with($root, '_') => 'a superglobal is request state the view model keeps out of a path',
+                $root === 'this' => '$this in the artefact is the template object, so a read like $this[\'x\'] cannot run',
+                default => '$GLOBALS is every global at once, not the data this view was handed',
+            };
+            $this->error("{$where}: \"{$root}\" cannot be the root of a path — {$reason}");
         }
 
         $php = '$' . $root;

@@ -881,14 +881,25 @@ final class CompilerTest extends TestCase
         }
     }
 
-    public function testNamedSuperglobalReadsStayLegal(): void
+    public function testSuperglobalPathRootsAreRejected(): void
     {
-        // A named superglobal is a request table a page may render, and what it
-        // returns is escaped like any other value — so only the two names that cannot
-        // be read as an array are refused.
-        $this->assertSame(
-            "## \$_GET['token'] ?? '' ##",
-            $this->compile(['body' => [['type' => 'text', 'text' => '{{ _GET.token }}']]])
+        // Reading is not narrower than writing: every name a loop variable may not
+        // take is one a path may not start with either, so `{{ _GET.token }}` stops
+        // reaching the artefact as `$_GET['token']`.
+        foreach (
+            ['_GET', '_POST', '_SERVER', '_ENV', '_COOKIE', '_FILES', '_REQUEST', '_SESSION'] as $name
+        ) {
+            $this->expectError(
+                ['body' => [['type' => 'text', 'text' => "{{ {$name}.token }}"]]],
+                "\"{$name}\" cannot be the root of a path"
+            );
+        }
+
+        // The guard sits in compilePath(), so every read field inherits it — not
+        // just interpolation in text.
+        $this->expectError(
+            ['body' => [['type' => 'each', 'items' => '_SERVER.rows', 'body' => []]]],
+            '"_SERVER" cannot be the root of a path'
         );
     }
 
@@ -1359,7 +1370,7 @@ final class CompilerTest extends TestCase
 
     public function testCompiledPageWithEveryNodeTypeIsParseablePhp(): void
     {
-        // spec.md promises the artefact is parseable PHP, which is the invariant the
+        // SPEC.md promises the artefact is parseable PHP, which is the invariant the
         // reserved-name gap broke: the compiler produced the file without a word and
         // only running it failed. A page that exercises one of every node keeps that
         // promise honest against future emission changes.
