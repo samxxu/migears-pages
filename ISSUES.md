@@ -17,20 +17,20 @@ Legend — **P0** functional or security · **P1** documentation that fails when
 
 | | |
 |---|---|
-| Unsettled | P0 0 · P1 0 · P2 1 · P3 4 · other 0 |
-| Settled | 0 of 5 |
-| Waiting on the owner | _nothing_ |
-| Waiting on the reviewer | `P2-1`, `P3-2`, `P3-4` |
-| Waiting on the coordinator | `P3-3` |
+| Unsettled | P0 0 · P1 0 · P2 0 · P3 2 · other 0 |
+| Settled | 3 of 5 |
+| Waiting on the owner | `P3-3` |
+| Waiting on the coordinator | _nothing_ |
+| Waiting on the reviewer | _nothing_ |
 | Deferred, owing nobody | `P3-1` |
 
 | id | level | status | title |
 |---|---|---|---|
-| [`P2-1`](issues/P2-1.md) | P2 | **fixed** | A `hidden` field's `label` is mandatory but never emitted: … |
+| [`P2-1`](issues/P2-1.md) | P2 | **verified** | A `hidden` field's `label` is mandatory but never emitted: … |
 | [`P3-1`](issues/P3-1.md) | P3 | **deferred** | The module's own ISSUES.md is stale: its 'Post-report status' table … |
-| [`P3-2`](issues/P3-2.md) | P3 | **fixed** | Metadata and doc drift: spec.md says the compiler is '≈1050 lines, … |
-| [`P3-3`](issues/P3-3.md) | P3 | **question** | The path root accepts reserved variables and superglobals in the read … |
-| [`P3-4`](issues/P3-4.md) | P3 | **fixed** | A bare colon attribute name passes: … |
+| [`P3-2`](issues/P3-2.md) | P3 | **verified** | Metadata and doc drift: spec.md says the compiler is '≈1050 lines, … |
+| [`P3-3`](issues/P3-3.md) | P3 | **accepted** | The path root accepts reserved variables and superglobals in the read … |
+| [`P3-4`](issues/P3-4.md) | P3 | **verified** | A bare colon attribute name passes: … |
 
 ## Unclosed
 
@@ -39,17 +39,14 @@ highest severity first. `waiting on` is the party who acts next, read from that 
 
 | | |
 |---|---|
-| Unclosed | **5** of 5 |
-| By status | `question` 1 · `deferred` 1 · `fixed` 3 |
-| Waiting on | reviewer 3 · coordinator 1 · - 1 |
+| Unclosed | **2** of 5 |
+| By status | `accepted` 1 · `deferred` 1 |
+| Waiting on | owner 1 · - 1 |
 
 | level | item | status | waiting on | title |
 |---|---|---|---|---|
-| **P2** | [`P2-1`](issues/P2-1.md) | `fixed` | reviewer | A `hidden` field's `label` is mandatory but never emitted: … |
 | **P3** | [`P3-1`](issues/P3-1.md) | `deferred` | - | The module's own ISSUES.md is stale: its 'Post-report status' table … |
-| **P3** | [`P3-2`](issues/P3-2.md) | `fixed` | reviewer | Metadata and doc drift: spec.md says the compiler is '≈1050 lines, … |
-| **P3** | [`P3-3`](issues/P3-3.md) | `question` | coordinator | The path root accepts reserved variables and superglobals in the read … |
-| **P3** | [`P3-4`](issues/P3-4.md) | `fixed` | reviewer | A bare colon attribute name passes: … |
+| **P3** | [`P3-3`](issues/P3-3.md) | `accepted` | owner | The path root accepts reserved variables and superglobals in the read … |
 
 ## Verdict
 
@@ -90,20 +87,20 @@ No test for deeply nested section recursion limits; no test for component with z
 
 | | |
 |---|---|
-| 未了结 | P0 0 · P1 0 · P2 1 · P3 4 · 其他 0 |
-| 已了结 | 0 / 5 |
-| 等负责人 | _无_ |
-| 等评审方 | `P2-1`, `P3-2`, `P3-4` |
-| 等协调人 | `P3-3` |
+| 未了结 | P0 0 · P1 0 · P2 0 · P3 2 · 其他 0 |
+| 已了结 | 3 / 5 |
+| 等模块主 | `P3-3` |
+| 等协调人 | _无_ |
+| 等评审方 | _无_ |
 | 已暂缓，不欠谁 | `P3-1` |
 
 | id | 级别 | 状态 | 标题 |
 |---|---|---|---|
-| [`P2-1`](issues/P2-1.md) | P2 | **fixed** | hidden 字段的 label 是必填却永不输出：requireString($n, "label") 无条件执行，而渲染步骤只在 … |
+| [`P2-1`](issues/P2-1.md) | P2 | **verified** | hidden 字段的 label 是必填却永不输出：requireString($n, "label") 无条件执行，而渲染步骤只在 … |
 | [`P3-1`](issues/P3-1.md) | P3 | **deferred** | 本模块自己的 ISSUES.md 已过期：其「Post-report … |
-| [`P3-2`](issues/P3-2.md) | P3 | **fixed** | 元数据与文档漂移：spec.md 称编译器「约 1050 行、Renderer 约 80 行」，实测物理 1,350 与 102 … |
-| [`P3-3`](issues/P3-3.md) | P3 | **question** | 路径根在「读」的方向上允许保留变量与超全局：{{ this.x }} 编译成 ## $this["x"] ?? "" ##，{{ … |
-| [`P3-4`](issues/P3-4.md) | P3 | **fixed** | 裸冒号属性名被放行：["type"=>"el","tag"=>"div",":"=>"z"] 产出 <div … |
+| [`P3-2`](issues/P3-2.md) | P3 | **verified** | 元数据与文档漂移：spec.md 称编译器「约 1050 行、Renderer 约 80 行」，实测物理 1,350 与 102 … |
+| [`P3-3`](issues/P3-3.md) | P3 | **accepted** | 路径根在「读」的方向上允许保留变量与超全局：{{ this.x }} 编译成 ## $this["x"] ?? "" ##，{{ … |
+| [`P3-4`](issues/P3-4.md) | P3 | **verified** | 裸冒号属性名被放行：["type"=>"el","tag"=>"div",":"=>"z"] 产出 <div … |
 
 ## 未关闭
 
@@ -112,17 +109,14 @@ No test for deeply nested section recursion limits; no test for component with z
 
 | | |
 |---|---|
-| 未关闭 | **5** / 5 |
-| 按状态 | `question` 1 · `deferred` 1 · `fixed` 3 |
-| 等在谁 | 评审方 3 · 协调人 1 · - 1 |
+| 未关闭 | **2** / 5 |
+| 按状态 | `accepted` 1 · `deferred` 1 |
+| 等在谁 | 模块主 1 · - 1 |
 
 | 级别 | 条目 | 状态 | 等在谁 | 标题 |
 |---|---|---|---|---|
-| **P2** | [`P2-1`](issues/P2-1.md) | `fixed` | 评审方 | hidden 字段的 label 是必填却永不输出：requireString($n, "label") 无条件执行，而渲染步骤只在 … |
 | **P3** | [`P3-1`](issues/P3-1.md) | `deferred` | - | 本模块自己的 ISSUES.md 已过期：其「Post-report … |
-| **P3** | [`P3-2`](issues/P3-2.md) | `fixed` | 评审方 | 元数据与文档漂移：spec.md 称编译器「约 1050 行、Renderer 约 80 行」，实测物理 1,350 与 102 … |
-| **P3** | [`P3-3`](issues/P3-3.md) | `question` | 协调人 | 路径根在「读」的方向上允许保留变量与超全局：{{ this.x }} 编译成 ## $this["x"] ?? "" ##，{{ … |
-| **P3** | [`P3-4`](issues/P3-4.md) | `fixed` | 评审方 | 裸冒号属性名被放行：["type"=>"el","tag"=>"div",":"=>"z"] 产出 <div … |
+| **P3** | [`P3-3`](issues/P3-3.md) | `accepted` | 模块主 | 路径根在「读」的方向上允许保留变量与超全局：{{ this.x }} 编译成 ## $this["x"] ?? "" ##，{{ … |
 
 ## 结论
 
